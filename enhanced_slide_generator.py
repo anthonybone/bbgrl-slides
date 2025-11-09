@@ -7,6 +7,7 @@ from pptx.enum.text import PP_ALIGN
 import re
 from datetime import datetime, timedelta
 import sys
+import os
 
 class EnhancedCatholicSlideGenerator:
     def __init__(self):
@@ -117,10 +118,14 @@ class EnhancedCatholicSlideGenerator:
             print(f"Error fetching readings: {e}")
             return {}
 
-    def create_enhanced_slides(self, prayer_data, readings_data, output_filename="enhanced_daily_mass_slides.pptx"):
+    def create_enhanced_slides(self, prayer_data, readings_data, output_filename=None):
         """
         Create PowerPoint slides with enhanced formatting for elderly congregation
         """
+        # Generate filename with date if not provided
+        if output_filename is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            output_filename = f"enhanced_daily_mass_slides_{date_str}.pptx"
         prs = Presentation()
         
         # Set slide dimensions for widescreen
@@ -146,9 +151,22 @@ class EnhancedCatholicSlideGenerator:
         if readings_data and readings_data.get('gospel'):
             self._add_reading_slide(prs, "Gospel", readings_data['gospel'])
         
+        # Ensure output directory exists
+        output_dir = "output"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        # Create full path for output file
+        output_path = os.path.join(output_dir, output_filename)
+        
+        # Remove existing file if it exists (replacing old file with new for same date)
+        if os.path.exists(output_path):
+            os.remove(output_path)
+            print(f"Replaced existing file: {output_path}")
+        
         # Save the presentation
-        prs.save(output_filename)
-        print(f"Enhanced slides saved as: {output_filename}")
+        prs.save(output_path)
+        print(f"Enhanced slides saved as: {output_path}")
 
     def _add_enhanced_title_slide(self, prs, date_str):
         """Enhanced title slide with large, readable text"""

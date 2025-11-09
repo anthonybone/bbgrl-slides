@@ -7,6 +7,7 @@ from pptx.enum.text import PP_ALIGN
 import re
 from datetime import datetime, timedelta
 import sys
+import os
 
 class CatholicSlideGenerator:
     def __init__(self):
@@ -165,10 +166,14 @@ class CatholicSlideGenerator:
         
         return readings_data
 
-    def create_slides(self, prayer_data, readings_data, output_filename="daily_mass_slides.pptx"):
+    def create_slides(self, prayer_data, readings_data, output_filename=None):
         """
         Create PowerPoint slides with the prayer and reading content
         """
+        # Generate filename with date if not provided
+        if output_filename is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            output_filename = f"daily_mass_slides_{date_str}.pptx"
         prs = Presentation()
         
         # Set slide dimensions for better readability
@@ -186,9 +191,22 @@ class CatholicSlideGenerator:
         if readings_data:
             self._add_reading_slides(prs, readings_data)
         
+        # Ensure output directory exists
+        output_dir = "output"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        # Create full path for output file
+        output_path = os.path.join(output_dir, output_filename)
+        
+        # Remove existing file if it exists (replacing old file with new for same date)
+        if os.path.exists(output_path):
+            os.remove(output_path)
+            print(f"Replaced existing file: {output_path}")
+        
         # Save the presentation
-        prs.save(output_filename)
-        print(f"Slides saved as: {output_filename}")
+        prs.save(output_path)
+        print(f"Slides saved as: {output_path}")
 
     def _add_title_slide(self, prs):
         """Add title slide"""
