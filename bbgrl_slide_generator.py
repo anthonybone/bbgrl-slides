@@ -173,28 +173,37 @@ class EnhancedCatholicSlideGenerator:
         slide_layout = prs.slide_layouts[6]  # Blank slide layout
         slide = prs.slides.add_slide(slide_layout)
         
-        # Main title
-        title_box = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(11.33), Inches(2))
+        # Main title with proper text boundaries - positioned higher for better balance, full width
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12.5), Inches(2.5))
         title_frame = title_box.text_frame
         title_frame.text = "Daily Catholic Mass"
+        title_frame.word_wrap = True
+        title_frame.margin_left = Inches(0.3)
+        title_frame.margin_right = Inches(0.3)
         title_paragraph = title_frame.paragraphs[0]
         title_paragraph.font.size = Pt(60)
         title_paragraph.font.bold = True
         title_paragraph.alignment = PP_ALIGN.CENTER
         title_paragraph.font.color.rgb = RGBColor(0, 0, 100)  # Dark blue
         
-        # Subtitle
-        subtitle_box = slide.shapes.add_textbox(Inches(1), Inches(4.5), Inches(11.33), Inches(1.5))
+        # Subtitle with proper boundaries - more space, full width
+        subtitle_box = slide.shapes.add_textbox(Inches(0.5), Inches(4.2), Inches(12.5), Inches(2))
         subtitle_frame = subtitle_box.text_frame
         subtitle_frame.text = f"Morning Prayer and Readings"
+        subtitle_frame.word_wrap = True
+        subtitle_frame.margin_left = Inches(0.3)
+        subtitle_frame.margin_right = Inches(0.3)
         subtitle_paragraph = subtitle_frame.paragraphs[0]
         subtitle_paragraph.font.size = Pt(40)
         subtitle_paragraph.alignment = PP_ALIGN.CENTER
         
-        # Date
-        date_box = slide.shapes.add_textbox(Inches(1), Inches(6), Inches(11.33), Inches(1))
+        # Date with proper boundaries - lower position with more space, full width
+        date_box = slide.shapes.add_textbox(Inches(0.5), Inches(6.5), Inches(12.5), Inches(1.5))
         date_frame = date_box.text_frame
         date_frame.text = date_str
+        date_frame.word_wrap = True
+        date_frame.margin_left = Inches(0.3)
+        date_frame.margin_right = Inches(0.3)
         date_paragraph = date_frame.paragraphs[0]
         date_paragraph.font.size = Pt(32)
         date_paragraph.alignment = PP_ALIGN.CENTER
@@ -205,32 +214,55 @@ class EnhancedCatholicSlideGenerator:
         slide_layout = prs.slide_layouts[6]  # Blank slide
         slide = prs.slides.add_slide(slide_layout)
         
-        # Title
-        title_box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(11.33), Inches(1))
+        # Title - full width
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.5), Inches(1))
         title_frame = title_box.text_frame
         title_frame.text = "Antiphon 1"
+        title_frame.word_wrap = True
         title_paragraph = title_frame.paragraphs[0]
         title_paragraph.font.size = Pt(48)
         title_paragraph.font.bold = True
         title_paragraph.alignment = PP_ALIGN.CENTER
         title_paragraph.font.color.rgb = RGBColor(0, 0, 150)
         
-        # Instruction
-        instruction_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(0.8))
+        # Instruction - full width
+        instruction_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12.5), Inches(0.8))
         instruction_frame = instruction_box.text_frame
         instruction_frame.text = "(Audience and Priest together)"
+        instruction_frame.word_wrap = True
         instruction_paragraph = instruction_frame.paragraphs[0]
         instruction_paragraph.font.size = Pt(24)
         instruction_paragraph.alignment = PP_ALIGN.CENTER
         instruction_paragraph.font.italic = True
         instruction_paragraph.font.color.rgb = RGBColor(100, 100, 100)
         
-        # Antiphon text
-        content_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(12.33), Inches(4))
+        # Antiphon text with proper boundaries and text wrapping - extended to use full slide width
+        content_box = slide.shapes.add_textbox(Inches(0.4), Inches(2.5), Inches(12.8), Inches(5.5))
         content_frame = content_box.text_frame
+        content_frame.word_wrap = True
+        content_frame.margin_left = Inches(0.3)
+        content_frame.margin_right = Inches(0.3)
+        content_frame.margin_top = Inches(0.1)
+        content_frame.margin_bottom = Inches(0.1)
+        
+        # Truncate text if too long and adjust font size based on length
+        max_chars = 500  # Increased from 300 since we have more space
+        if len(antiphon_text) > max_chars:
+            antiphon_text = antiphon_text[:max_chars-3] + "..."
+        
         content_frame.text = antiphon_text
         content_paragraph = content_frame.paragraphs[0]
-        content_paragraph.font.size = Pt(40)  # Large text for elderly
+        
+        # Adjust font size based on text length - larger sizes for extended space
+        if len(antiphon_text) <= 150:
+            content_paragraph.font.size = Pt(44)
+        elif len(antiphon_text) <= 300:
+            content_paragraph.font.size = Pt(36)
+        elif len(antiphon_text) <= 450:
+            content_paragraph.font.size = Pt(32)
+        else:
+            content_paragraph.font.size = Pt(28)
+            
         content_paragraph.font.color.rgb = RGBColor(0, 100, 200)  # Blue
         content_paragraph.alignment = PP_ALIGN.CENTER
         content_paragraph.font.bold = True
@@ -240,61 +272,150 @@ class EnhancedCatholicSlideGenerator:
         slide_layout = prs.slide_layouts[6]  # Blank slide
         slide = prs.slides.add_slide(slide_layout)
         
-        # Title
-        title_box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(11.33), Inches(1))
+        # Title - full width
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.5), Inches(1))
         title_frame = title_box.text_frame
         title_frame.text = "Priest Response"
+        title_frame.word_wrap = True
         title_paragraph = title_frame.paragraphs[0]
         title_paragraph.font.size = Pt(48)
         title_paragraph.font.bold = True
         title_paragraph.alignment = PP_ALIGN.CENTER
         title_paragraph.font.color.rgb = RGBColor(150, 0, 0)
         
-        # Instruction
-        instruction_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(0.8))
+        # Instruction - full width
+        instruction_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12.5), Inches(0.8))
         instruction_frame = instruction_box.text_frame
         instruction_frame.text = "(Priest only)"
+        instruction_frame.word_wrap = True
         instruction_paragraph = instruction_frame.paragraphs[0]
         instruction_paragraph.font.size = Pt(24)
         instruction_paragraph.alignment = PP_ALIGN.CENTER
         instruction_paragraph.font.italic = True
         instruction_paragraph.font.color.rgb = RGBColor(100, 100, 100)
         
-        # Response text
-        content_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(12.33), Inches(4))
+        # Response text with proper boundaries and text wrapping - extended to use full slide width
+        content_box = slide.shapes.add_textbox(Inches(0.4), Inches(2.5), Inches(12.8), Inches(5.5))
         content_frame = content_box.text_frame
+        content_frame.word_wrap = True
+        content_frame.margin_left = Inches(0.3)
+        content_frame.margin_right = Inches(0.3)
+        content_frame.margin_top = Inches(0.1)
+        content_frame.margin_bottom = Inches(0.1)
+        
+        # Truncate text if too long and adjust font size based on length
+        max_chars = 600  # Increased from 400 since we have more space
+        if len(response_text) > max_chars:
+            response_text = response_text[:max_chars-3] + "..."
+        
         content_frame.text = response_text
         content_paragraph = content_frame.paragraphs[0]
-        content_paragraph.font.size = Pt(36)  # Large text for elderly
+        
+        # Adjust font size based on text length - larger sizes for extended space
+        if len(response_text) <= 200:
+            content_paragraph.font.size = Pt(40)
+        elif len(response_text) <= 350:
+            content_paragraph.font.size = Pt(34)
+        elif len(response_text) <= 500:
+            content_paragraph.font.size = Pt(30)
+        else:
+            content_paragraph.font.size = Pt(26)
+            
         content_paragraph.font.color.rgb = RGBColor(200, 0, 0)  # Red
         content_paragraph.alignment = PP_ALIGN.CENTER
         content_paragraph.font.bold = True
 
     def _add_reading_slide(self, prs, reading_title, reading_text):
         """Add reading slides with large, readable text"""
-        slide_layout = prs.slide_layouts[6]  # Blank slide
-        slide = prs.slides.add_slide(slide_layout)
+        # Split long text across multiple slides if necessary
+        max_chars_per_slide = 1000  # Increased from 800 since we have more space
+        text_chunks = self._split_text_for_slides(reading_text, max_chars_per_slide)
         
-        # Title
-        title_box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(11.33), Inches(1))
-        title_frame = title_box.text_frame
-        title_frame.text = reading_title
-        title_paragraph = title_frame.paragraphs[0]
-        title_paragraph.font.size = Pt(48)
-        title_paragraph.font.bold = True
-        title_paragraph.alignment = PP_ALIGN.CENTER
-        title_paragraph.font.color.rgb = RGBColor(0, 0, 100)
+        for i, chunk in enumerate(text_chunks):
+            slide_layout = prs.slide_layouts[6]  # Blank slide
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Title (add part indicator if multiple slides) - full width
+            title_text = reading_title if len(text_chunks) == 1 else f"{reading_title} (Part {i+1}/{len(text_chunks)})"
+            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.5), Inches(1))
+            title_frame = title_box.text_frame
+            title_frame.text = title_text
+            title_frame.word_wrap = True
+            title_paragraph = title_frame.paragraphs[0]
+            title_paragraph.font.size = Pt(48)
+            title_paragraph.font.bold = True
+            title_paragraph.alignment = PP_ALIGN.CENTER
+            title_paragraph.font.color.rgb = RGBColor(0, 0, 100)
+            
+            # Reading text with proper boundaries - extended to use full slide width
+            content_box = slide.shapes.add_textbox(Inches(0.4), Inches(1.8), Inches(12.8), Inches(6.2))
+            content_frame = content_box.text_frame
+            content_frame.word_wrap = True
+            content_frame.margin_left = Inches(0.4)
+            content_frame.margin_right = Inches(0.4)
+            content_frame.margin_top = Inches(0.2)
+            content_frame.margin_bottom = Inches(0.2)
+            
+            content_frame.text = chunk
+            
+            # Set font size based on text length - larger sizes for extended space
+            char_count = len(chunk)
+            if char_count <= 400:
+                font_size = 32
+            elif char_count <= 600:
+                font_size = 30
+            elif char_count <= 800:
+                font_size = 28
+            elif char_count <= 1000:
+                font_size = 26
+            else:
+                font_size = 24
+            
+            for paragraph in content_frame.paragraphs:
+                paragraph.font.size = Pt(font_size)
+                paragraph.alignment = PP_ALIGN.LEFT
+                paragraph.space_after = Pt(12)  # Add space between paragraphs
+    
+    def _split_text_for_slides(self, text, max_chars_per_slide):
+        """Split text into chunks suitable for individual slides"""
+        if len(text) <= max_chars_per_slide:
+            return [text]
         
-        # Reading text
-        content_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.8), Inches(12.33), Inches(5))
-        content_frame = content_box.text_frame
-        content_frame.text = reading_text
-        content_frame.word_wrap = True
+        chunks = []
+        current_chunk = ""
+        sentences = text.split('. ')
         
-        for paragraph in content_frame.paragraphs:
-            paragraph.font.size = Pt(28)  # Large, readable text
-            paragraph.alignment = PP_ALIGN.LEFT
-            paragraph.space_after = Pt(12)  # Add space between paragraphs
+        for sentence in sentences:
+            # If adding this sentence would exceed the limit, start a new chunk
+            if len(current_chunk + sentence) > max_chars_per_slide and current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = sentence + '. '
+            else:
+                current_chunk += sentence + '. '
+        
+        # Add the last chunk if it has content
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+        
+        # If we still have chunks that are too long, split them more aggressively
+        final_chunks = []
+        for chunk in chunks:
+            if len(chunk) <= max_chars_per_slide:
+                final_chunks.append(chunk)
+            else:
+                # Split by words if sentences are still too long
+                words = chunk.split(' ')
+                current_word_chunk = ""
+                for word in words:
+                    if len(current_word_chunk + word) > max_chars_per_slide and current_word_chunk:
+                        final_chunks.append(current_word_chunk.strip())
+                        current_word_chunk = word + ' '
+                    else:
+                        current_word_chunk += word + ' '
+                if current_word_chunk.strip():
+                    final_chunks.append(current_word_chunk.strip())
+        
+        return final_chunks if final_chunks else [text[:max_chars_per_slide]]
 
 def main():
     print("Enhanced Catholic Slide Generator")
