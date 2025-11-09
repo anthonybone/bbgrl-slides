@@ -17,9 +17,69 @@ class EnhancedCatholicSlideGenerator:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
 
+    def get_liturgy_of_hours_structure(self, is_first_hour=True):
+        """
+        Get the proper Liturgy of the Hours structure for Morning Prayer
+        """
+        liturgy_structure = {
+            "date": datetime.now().strftime('%B %d, %Y'),
+            "is_first_hour": is_first_hour,
+            "invitatory": None,
+            "morning_prayer": None
+        }
+        
+        # Invitatory (only if it's the first hour of the day)
+        if is_first_hour:
+            liturgy_structure["invitatory"] = {
+                "sequence": [
+                    "Opening Verse: Lord, open my lips.",
+                    "Response: And my mouth will proclaim your praise.",
+                    "Invitatory Antiphon",
+                    "Invitatory Psalm (95, 100, 67, or 24)",
+                    "Repeat Invitatory Antiphon"
+                ]
+            }
+        
+        # Morning Prayer structure
+        liturgy_structure["morning_prayer"] = {
+            "sequence": [
+                "Opening Verse: God, come to my assistance.",
+                "Response: Lord, make haste to help me.",
+                "Glory to the Father, and to the Son, and to the Holy Spirit.",
+                "As it was in the beginning, is now, and will be forever. Amen.",
+                "Optional: Alleluia (omit during Lent)",
+                "Hymn",
+                "Antiphon 1",
+                "Psalm 1",
+                "Glory to the Father",
+                "Repeat Antiphon 1",
+                "Antiphon 2", 
+                "Psalm 2",
+                "Glory to the Father",
+                "Repeat Antiphon 2",
+                "Antiphon 3",
+                "Old Testament Canticle",
+                "Glory to the Father",
+                "Repeat Antiphon 3",
+                "Short Reading (Scripture)",
+                "Responsory",
+                "Gospel Canticle Antiphon",
+                "Benedictus (Luke 1:68–79)",
+                "Glory to the Father",
+                "Repeat Gospel Canticle Antiphon",
+                "Intercessions",
+                "The Lord's Prayer",
+                "Concluding Prayer (Collect)",
+                "Blessing or Dismissal",
+                "Optional: Marian Antiphon"
+            ]
+        }
+        
+        return liturgy_structure
+
     def fetch_morning_prayer_detailed(self):
         """
-        Fetch and parse morning prayer with detailed extraction
+        Fetch and parse morning prayer with detailed extraction from iBreviary
         """
         url = f"{self.base_url}breviario.php?s=lodi"
         
@@ -30,16 +90,19 @@ class EnhancedCatholicSlideGenerator:
             
             full_text = soup.get_text()
             
-            # Find the main invitatory antiphon (Antiphon 1)
-            antiphon_1 = None
+            # Get the liturgy structure
+            liturgy = self.get_liturgy_of_hours_structure(is_first_hour=True)
+            
+            # Try to extract actual content from iBreviary for specific elements
+            liturgy['extracted_content'] = {}
+            
+            # Find the main invitatory antiphon
             invitatory_pattern = r'(Come, worship the Lord[^.]*alleluia\.)'
             invitatory_match = re.search(invitatory_pattern, full_text, re.IGNORECASE)
             if invitatory_match:
-                antiphon_1 = invitatory_match.group(1).strip()
+                liturgy['extracted_content']['invitatory_antiphon'] = invitatory_match.group(1).strip()
             
-            # Find the first psalm verse that follows (priest's response)
-            priest_response = None
-            # Look for substantial psalm content after the invitatory
+            # Find psalm content
             psalm_patterns = [
                 r'Come, let us sing to the Lord[^.]*\.',
                 r'Let us approach him with praise[^.]*\.',
@@ -49,29 +112,15 @@ class EnhancedCatholicSlideGenerator:
             for pattern in psalm_patterns:
                 match = re.search(pattern, full_text, re.IGNORECASE)
                 if match:
-                    priest_response = match.group(0).strip()
+                    liturgy['extracted_content']['psalm_verse'] = match.group(0).strip()
                     break
             
-            # If no specific match, get a meaningful psalm verse
-            if not priest_response:
-                psalm_verse_pattern = r'([A-Z][^.]*Lord[^.]*\.)'
-                psalm_matches = list(re.finditer(psalm_verse_pattern, full_text))
-                for match in psalm_matches:
-                    verse = match.group(1).strip()
-                    if (len(verse) > 30 and len(verse) < 200 and 
-                        'Lord' in verse and 'Come' not in verse):
-                        priest_response = verse
-                        break
-            
-            return {
-                'antiphon_1': antiphon_1,
-                'priest_response': priest_response,
-                'date': datetime.now().strftime('%B %d, %Y')
-            }
+            return liturgy
             
         except Exception as e:
             print(f"Error fetching morning prayer: {e}")
-            return None
+            # Return basic structure even if fetching fails
+            return self.get_liturgy_of_hours_structure(is_first_hour=True)
 
     def fetch_daily_readings_detailed(self):
         """
@@ -135,13 +184,13 @@ class EnhancedCatholicSlideGenerator:
         # 1. Title slide
         self._add_enhanced_title_slide(prs, prayer_data.get('date', ''))
         
-        # 2. Antiphon 1 slide (Blue - audience and priest read together)
-        if prayer_data and prayer_data.get('antiphon_1'):
-            self._add_antiphon_slide(prs, prayer_data['antiphon_1'])
-            
-            # 3. Priest response slide (Red - priest only)
-            if prayer_data.get('priest_response'):
-                self._add_priest_response_slide(prs, prayer_data['priest_response'])
+        # 2. Liturgy of the Hours - Invitatory (if first hour)
+        if prayer_data and prayer_data.get('is_first_hour') and prayer_data.get('invitatory'):
+            self._add_liturgy_sequence_slides(prs, "Invitatory", prayer_data['invitatory']['sequence'])
+        
+        # 3. Liturgy of the Hours - Morning Prayer
+        if prayer_data and prayer_data.get('morning_prayer'):
+            self._add_liturgy_sequence_slides(prs, "Morning Prayer", prayer_data['morning_prayer']['sequence'])
         
         # 4. First Reading slide
         if readings_data and readings_data.get('first_reading'):
@@ -168,6 +217,66 @@ class EnhancedCatholicSlideGenerator:
         prs.save(output_path)
         print(f"Enhanced slides saved as: {output_path}")
 
+    def _add_liturgy_sequence_slides(self, prs, section_title, sequence):
+        """
+        Add slides for Liturgy of the Hours sequences (Invitatory and Morning Prayer)
+        """
+        for i, item in enumerate(sequence):
+            slide_layout = prs.slide_layouts[6]  # Blank layout
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Section title at top
+            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.33), Inches(1.2))
+            title_frame = title_box.text_frame
+            title_frame.text = f"{section_title} - Step {i + 1}"
+            title_para = title_frame.paragraphs[0]
+            title_para.font.size = Pt(36)
+            title_para.font.bold = True
+            title_para.font.color.rgb = RGBColor(0, 51, 102)  # Dark blue
+            title_para.alignment = PP_ALIGN.CENTER
+            
+            # Main content
+            content_box = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(11.33), Inches(4.5))
+            content_frame = content_box.text_frame
+            content_frame.word_wrap = True
+            content_frame.margin_bottom = Inches(0.2)
+            content_frame.margin_top = Inches(0.2)
+            content_frame.margin_left = Inches(0.2)
+            content_frame.margin_right = Inches(0.2)
+            
+            # Determine text color and style based on content type
+            text_color = self._get_liturgy_text_color(item)
+            
+            content_frame.text = item
+            content_para = content_frame.paragraphs[0]
+            content_para.font.size = Pt(44)
+            content_para.font.bold = True
+            content_para.font.color.rgb = text_color
+            content_para.alignment = PP_ALIGN.CENTER
+            content_para.line_spacing = 1.2
+    
+    def _get_liturgy_text_color(self, item):
+        """
+        Determine text color based on liturgy item type
+        """
+        item_lower = item.lower()
+        
+        # Responses and congregation parts - Blue
+        if any(keyword in item_lower for keyword in ['response:', 'glory to the father', 'amen', 'alleluia', 'repeat']):
+            return RGBColor(0, 100, 200)  # Blue for congregation responses
+        
+        # Priest-only parts - Red
+        elif any(keyword in item_lower for keyword in ['opening verse:', 'blessing', 'dismissal', 'concluding prayer']):
+            return RGBColor(200, 0, 0)  # Red for priest only
+        
+        # Psalms and readings - Purple
+        elif any(keyword in item_lower for keyword in ['psalm', 'canticle', 'reading', 'benedictus', 'magnificat']):
+            return RGBColor(128, 0, 128)  # Purple for psalms/readings
+        
+        # Default - Dark blue
+        else:
+            return RGBColor(0, 51, 102)  # Dark blue for general liturgical text
+
     def _add_enhanced_title_slide(self, prs, date_str):
         """Enhanced title slide with large, readable text"""
         slide_layout = prs.slide_layouts[6]  # Blank slide layout
@@ -189,7 +298,7 @@ class EnhancedCatholicSlideGenerator:
         # Subtitle with proper boundaries - more space, full width
         subtitle_box = slide.shapes.add_textbox(Inches(0.5), Inches(4.2), Inches(12.5), Inches(2))
         subtitle_frame = subtitle_box.text_frame
-        subtitle_frame.text = f"Morning Prayer and Readings"
+        subtitle_frame.text = f"Liturgy of the Hours - Morning Prayer and Readings"
         subtitle_frame.word_wrap = True
         subtitle_frame.margin_left = Inches(0.3)
         subtitle_frame.margin_right = Inches(0.3)
@@ -208,122 +317,6 @@ class EnhancedCatholicSlideGenerator:
         date_paragraph.font.size = Pt(32)
         date_paragraph.alignment = PP_ALIGN.CENTER
         date_paragraph.font.italic = True
-
-    def _add_antiphon_slide(self, prs, antiphon_text):
-        """Add Antiphon 1 slide (Blue text - congregation and priest together)"""
-        slide_layout = prs.slide_layouts[6]  # Blank slide
-        slide = prs.slides.add_slide(slide_layout)
-        
-        # Title - full width
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.5), Inches(1))
-        title_frame = title_box.text_frame
-        title_frame.text = "Antiphon 1"
-        title_frame.word_wrap = True
-        title_paragraph = title_frame.paragraphs[0]
-        title_paragraph.font.size = Pt(48)
-        title_paragraph.font.bold = True
-        title_paragraph.alignment = PP_ALIGN.CENTER
-        title_paragraph.font.color.rgb = RGBColor(0, 0, 150)
-        
-        # Instruction - full width
-        instruction_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12.5), Inches(0.8))
-        instruction_frame = instruction_box.text_frame
-        instruction_frame.text = "(Audience and Priest together)"
-        instruction_frame.word_wrap = True
-        instruction_paragraph = instruction_frame.paragraphs[0]
-        instruction_paragraph.font.size = Pt(24)
-        instruction_paragraph.alignment = PP_ALIGN.CENTER
-        instruction_paragraph.font.italic = True
-        instruction_paragraph.font.color.rgb = RGBColor(100, 100, 100)
-        
-        # Antiphon text with proper boundaries and text wrapping - extended to use full slide width
-        content_box = slide.shapes.add_textbox(Inches(0.4), Inches(2.5), Inches(12.8), Inches(5.5))
-        content_frame = content_box.text_frame
-        content_frame.word_wrap = True
-        content_frame.margin_left = Inches(0.3)
-        content_frame.margin_right = Inches(0.3)
-        content_frame.margin_top = Inches(0.1)
-        content_frame.margin_bottom = Inches(0.1)
-        
-        # Truncate text if too long and adjust font size based on length
-        max_chars = 500  # Increased from 300 since we have more space
-        if len(antiphon_text) > max_chars:
-            antiphon_text = antiphon_text[:max_chars-3] + "..."
-        
-        content_frame.text = antiphon_text
-        content_paragraph = content_frame.paragraphs[0]
-        
-        # Adjust font size based on text length - larger sizes for extended space
-        if len(antiphon_text) <= 150:
-            content_paragraph.font.size = Pt(44)
-        elif len(antiphon_text) <= 300:
-            content_paragraph.font.size = Pt(36)
-        elif len(antiphon_text) <= 450:
-            content_paragraph.font.size = Pt(32)
-        else:
-            content_paragraph.font.size = Pt(28)
-            
-        content_paragraph.font.color.rgb = RGBColor(0, 100, 200)  # Blue
-        content_paragraph.alignment = PP_ALIGN.CENTER
-        content_paragraph.font.bold = True
-
-    def _add_priest_response_slide(self, prs, response_text):
-        """Add priest response slide (Red text - priest only)"""
-        slide_layout = prs.slide_layouts[6]  # Blank slide
-        slide = prs.slides.add_slide(slide_layout)
-        
-        # Title - full width
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.5), Inches(1))
-        title_frame = title_box.text_frame
-        title_frame.text = "Priest Response"
-        title_frame.word_wrap = True
-        title_paragraph = title_frame.paragraphs[0]
-        title_paragraph.font.size = Pt(48)
-        title_paragraph.font.bold = True
-        title_paragraph.alignment = PP_ALIGN.CENTER
-        title_paragraph.font.color.rgb = RGBColor(150, 0, 0)
-        
-        # Instruction - full width
-        instruction_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12.5), Inches(0.8))
-        instruction_frame = instruction_box.text_frame
-        instruction_frame.text = "(Priest only)"
-        instruction_frame.word_wrap = True
-        instruction_paragraph = instruction_frame.paragraphs[0]
-        instruction_paragraph.font.size = Pt(24)
-        instruction_paragraph.alignment = PP_ALIGN.CENTER
-        instruction_paragraph.font.italic = True
-        instruction_paragraph.font.color.rgb = RGBColor(100, 100, 100)
-        
-        # Response text with proper boundaries and text wrapping - extended to use full slide width
-        content_box = slide.shapes.add_textbox(Inches(0.4), Inches(2.5), Inches(12.8), Inches(5.5))
-        content_frame = content_box.text_frame
-        content_frame.word_wrap = True
-        content_frame.margin_left = Inches(0.3)
-        content_frame.margin_right = Inches(0.3)
-        content_frame.margin_top = Inches(0.1)
-        content_frame.margin_bottom = Inches(0.1)
-        
-        # Truncate text if too long and adjust font size based on length
-        max_chars = 600  # Increased from 400 since we have more space
-        if len(response_text) > max_chars:
-            response_text = response_text[:max_chars-3] + "..."
-        
-        content_frame.text = response_text
-        content_paragraph = content_frame.paragraphs[0]
-        
-        # Adjust font size based on text length - larger sizes for extended space
-        if len(response_text) <= 200:
-            content_paragraph.font.size = Pt(40)
-        elif len(response_text) <= 350:
-            content_paragraph.font.size = Pt(34)
-        elif len(response_text) <= 500:
-            content_paragraph.font.size = Pt(30)
-        else:
-            content_paragraph.font.size = Pt(26)
-            
-        content_paragraph.font.color.rgb = RGBColor(200, 0, 0)  # Red
-        content_paragraph.alignment = PP_ALIGN.CENTER
-        content_paragraph.font.bold = True
 
     def _add_reading_slide(self, prs, reading_title, reading_text):
         """Add reading slides with large, readable text"""
@@ -417,7 +410,7 @@ class EnhancedCatholicSlideGenerator:
         
         return final_chunks if final_chunks else [text[:max_chars_per_slide]]
 
-def main():
+def main(include_invitatory=True):
     print("Enhanced Catholic Slide Generator")
     print("=" * 40)
     
@@ -426,9 +419,23 @@ def main():
     print("Fetching morning prayer content...")
     prayer_data = generator.fetch_morning_prayer_detailed()
     
+    # Override the is_first_hour setting if specified
+    if prayer_data and not include_invitatory:
+        prayer_data['is_first_hour'] = False
+    
     if prayer_data:
-        print(f"✓ Found Antiphon 1: {prayer_data['antiphon_1'][:50]}...")
-        print(f"✓ Found Priest Response: {prayer_data['priest_response'][:50]}...")
+        print(f"✓ Found Liturgy structure for: {prayer_data['date']}")
+        if prayer_data.get('is_first_hour'):
+            print("✓ Including Invitatory (first hour of day)")
+        print("✓ Including Morning Prayer sequence")
+        
+        # Show extracted content if available
+        if prayer_data.get('extracted_content'):
+            extracted = prayer_data['extracted_content']
+            if extracted.get('invitatory_antiphon'):
+                print(f"✓ Found Invitatory Antiphon: {extracted['invitatory_antiphon'][:50]}...")
+            if extracted.get('psalm_verse'):
+                print(f"✓ Found Psalm verse: {extracted['psalm_verse'][:50]}...")
     
     print("\nFetching daily readings...")
     readings_data = generator.fetch_daily_readings_detailed()
@@ -444,4 +451,10 @@ def main():
     print("✓ Enhanced slides created successfully!")
 
 if __name__ == "__main__":
-    main()
+    # Check for command line arguments
+    include_invitatory = True
+    if len(sys.argv) > 1 and sys.argv[1].lower() in ['--no-invitatory', '-n']:
+        include_invitatory = False
+        print("Note: Running without Invitatory (not first hour)")
+    
+    main(include_invitatory)
