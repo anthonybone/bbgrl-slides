@@ -77,6 +77,122 @@ class EnhancedCatholicSlideGenerator:
         
         return liturgy_structure
 
+    def get_daily_mass_structure(self):
+        """
+        Get the proper Daily Mass structure according to the Roman Missal
+        """
+        daily_mass_structure = {
+            "DailyMass": {
+                "IntroductoryRites": {
+                    "sequence": [
+                        "Entrance Chant or Hymn",
+                        "Procession of Priest and Ministers",
+                        "Sign of the Cross",
+                        "Greeting: The Lord be with you / And with your spirit.",
+                        "Optional Introduction by the Priest",
+                        "Penitential Act",
+                        "Confiteor: I confess to almighty God...",
+                        "Response: May almighty God have mercy on us...",
+                        "Optional: Kyrie, eleison. (Lord, have mercy.)",
+                        "Gloria (Sundays and Solemnities)",
+                        "Collect (Opening Prayer)"
+                    ]
+                },
+
+                "LiturgyOfTheWord": {
+                    "sequence": [
+                        "First Reading (usually from Old Testament)",
+                        "Reader: The Word of the Lord.",
+                        "Response: Thanks be to God.",
+                        "Responsorial Psalm (sung or recited)",
+                        "Response (repeated after each verse)",
+                        "Second Reading (on Sundays and Solemnities)",
+                        "Reader: The Word of the Lord.",
+                        "Response: Thanks be to God.",
+                        "Gospel Acclamation (Alleluia, or another verse during Lent)",
+                        "Gospel Reading",
+                        "Deacon/Priest: The Lord be with you.",
+                        "Response: And with your spirit.",
+                        "Deacon/Priest: A reading from the holy Gospel according to N.",
+                        "Response: Glory to you, O Lord.",
+                        "Gospel text",
+                        "Deacon/Priest: The Gospel of the Lord.",
+                        "Response: Praise to you, Lord Jesus Christ.",
+                        "Homily",
+                        "Silent Reflection (optional)",
+                        "Profession of Faith (Nicene or Apostles' Creed, Sundays & Solemnities)",
+                        "Universal Prayer (Prayers of the Faithful)",
+                        "Response after each petition: Lord, hear our prayer."
+                    ]
+                },
+
+                "LiturgyOfTheEucharist": {
+                    "sequence": [
+                        "Preparation of the Altar and the Gifts",
+                        "Offertory Chant (optional)",
+                        "Priest: Blessed are you, Lord God of all creation...",
+                        "Response (if said aloud): Blessed be God forever.",
+                        "Priest washes hands: Lord, wash away my iniquity...",
+                        "Invitation to Prayer: Pray, brothers and sisters...",
+                        "Response: May the Lord accept the sacrifice at your hands...",
+                        "Prayer over the Offerings",
+                        "Preface Dialogue:",
+                        "Priest: The Lord be with you.",
+                        "Response: And with your spirit.",
+                        "Priest: Lift up your hearts.",
+                        "Response: We lift them up to the Lord.",
+                        "Priest: Let us give thanks to the Lord our God.",
+                        "Response: It is right and just.",
+                        "Preface Prayer",
+                        "Sanctus (Holy, Holy, Holy Lord...)",
+                        "Eucharistic Prayer (varies by day)",
+                        "Epiclesis (calling down the Holy Spirit)",
+                        "Institution Narrative (Consecration)",
+                        "Memorial Acclamation (e.g., We proclaim your Death, O Lord...)",
+                        "Anamnesis and Offering",
+                        "Intercessions (for Church, living, and dead)",
+                        "Doxology: Through him, and with him, and in him...",
+                        "Response: Amen."
+                    ]
+                },
+
+                "CommunionRite": {
+                    "sequence": [
+                        "The Lord's Prayer",
+                        "Response: Our Father, who art in heaven...",
+                        "Embolism and Doxology: For the kingdom, the power, and the glory...",
+                        "Sign of Peace",
+                        "Priest: The peace of the Lord be with you always.",
+                        "Response: And with your spirit.",
+                        "Exchange of Peace (optional)",
+                        "Fraction Rite (Breaking of the Bread)",
+                        "Lamb of God (Agnus Dei)",
+                        "Priest's private prayers before Communion",
+                        "Priest: Behold the Lamb of God...",
+                        "Response: Lord, I am not worthy that you should enter under my roof...",
+                        "Distribution of Communion",
+                        "Communion Chant or Hymn",
+                        "Silent Prayer after Communion",
+                        "Prayer after Communion"
+                    ]
+                },
+
+                "ConcludingRite": {
+                    "sequence": [
+                        "Announcements (if any)",
+                        "Priest: The Lord be with you.",
+                        "Response: And with your spirit.",
+                        "Priest: May almighty God bless you, the Father, and the Son, and the Holy Spirit.",
+                        "Response: Amen.",
+                        "Deacon or Priest: Go in peace, glorifying the Lord by your life. (or variant)",
+                        "Response: Thanks be to God."
+                    ]
+                }
+            }
+        }
+        
+        return daily_mass_structure
+
     def extract_liturgical_content(self, soup, full_text):
         """
         Extract specific liturgical content from iBreviary
@@ -352,13 +468,27 @@ class EnhancedCatholicSlideGenerator:
         if prayer_data and prayer_data.get('morning_prayer'):
             self._add_liturgy_sequence_slides(prs, "Morning Prayer", prayer_data['morning_prayer']['sequence'], extracted_content)
         
-        # 4. First Reading slide
-        if readings_data and readings_data.get('first_reading'):
-            self._add_reading_slide(prs, "First Reading", readings_data['first_reading'])
+        # 4. Daily Mass Structure
+        mass_structure = self.get_daily_mass_structure()
+        daily_mass = mass_structure['DailyMass']
         
-        # 5. Gospel slide
-        if readings_data and readings_data.get('gospel'):
-            self._add_reading_slide(prs, "Gospel", readings_data['gospel'])
+        # Add header card to signal transition to Daily Mass
+        self._add_mass_header_slide(prs)
+        
+        # Add Daily Mass sections
+        section_names = {
+            'IntroductoryRites': 'Introductory Rites',
+            'LiturgyOfTheWord': 'Liturgy of the Word',
+            'LiturgyOfTheEucharist': 'Liturgy of the Eucharist',
+            'CommunionRite': 'Communion Rite',
+            'ConcludingRite': 'Concluding Rite'
+        }
+        
+        for section_name, section_data in daily_mass.items():
+            display_name = section_names.get(section_name, section_name)
+            self._add_liturgy_sequence_slides(prs, display_name, section_data['sequence'], extracted_content)
+        
+        # Mass ends here with "Thanks be to God" - no additional slides needed
         
         # Ensure output directory exists
         output_dir = "output"
@@ -573,6 +703,70 @@ class EnhancedCatholicSlideGenerator:
         date_paragraph.alignment = PP_ALIGN.CENTER
         date_paragraph.font.italic = True
 
+    def _add_mass_header_slide(self, prs):
+        """Add a header card to signal the transition to Daily Mass structure"""
+        slide_layout = prs.slide_layouts[6]  # Blank slide layout
+        slide = prs.slides.add_slide(slide_layout)
+        
+        # Main header text - centered and prominent
+        header_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(12.5), Inches(2.5))
+        header_frame = header_box.text_frame
+        header_frame.text = "Daily Catholic Mass"
+        header_frame.word_wrap = True
+        header_frame.margin_left = Inches(0.3)
+        header_frame.margin_right = Inches(0.3)
+        header_paragraph = header_frame.paragraphs[0]
+        header_paragraph.font.size = Pt(56)
+        header_paragraph.font.bold = True
+        header_paragraph.alignment = PP_ALIGN.CENTER
+        header_paragraph.font.color.rgb = RGBColor(139, 0, 0)  # Dark red color to distinguish from other sections
+        
+        # Subtitle
+        subtitle_box = slide.shapes.add_textbox(Inches(2), Inches(5), Inches(9.5), Inches(1))
+        subtitle_frame = subtitle_box.text_frame
+        subtitle_frame.text = "Structure of the Roman Rite"
+        subtitle_paragraph = subtitle_frame.paragraphs[0]
+        subtitle_paragraph.font.size = Pt(32)
+        subtitle_paragraph.alignment = PP_ALIGN.CENTER
+        subtitle_paragraph.font.color.rgb = RGBColor(139, 0, 0)  # Matching dark red
+        
+        # Decorative element
+        decoration_box = slide.shapes.add_textbox(Inches(4), Inches(6.2), Inches(5.5), Inches(1))
+        decoration_frame = decoration_box.text_frame
+        decoration_frame.text = "† † †"  # Christian cross symbols
+        decoration_paragraph = decoration_frame.paragraphs[0]
+        decoration_paragraph.font.size = Pt(28)
+        decoration_paragraph.alignment = PP_ALIGN.CENTER
+        decoration_paragraph.font.color.rgb = RGBColor(139, 0, 0)  # Matching dark red
+
+    def _add_mass_readings_header_slide(self, prs):
+        """Add a header card to signal the transition from Liturgy of the Hours to Daily Mass readings"""
+        slide_layout = prs.slide_layouts[6]  # Blank slide layout
+        slide = prs.slides.add_slide(slide_layout)
+        
+        # Main header text - centered and prominent
+        header_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(12.5), Inches(2.5))
+        header_frame = header_box.text_frame
+        header_frame.text = "Daily Mass Readings"
+        header_frame.word_wrap = True
+        header_frame.margin_left = Inches(0.3)
+        header_frame.margin_right = Inches(0.3)
+        header_paragraph = header_frame.paragraphs[0]
+        header_paragraph.font.size = Pt(56)
+        header_paragraph.font.bold = True
+        header_paragraph.alignment = PP_ALIGN.CENTER
+        header_paragraph.font.color.rgb = RGBColor(100, 0, 0)  # Dark red color to distinguish from other sections
+        
+        # Subtle divider line or decorative element (optional)
+        # Adding a simple text decoration
+        decoration_box = slide.shapes.add_textbox(Inches(4), Inches(5.5), Inches(5.5), Inches(1))
+        decoration_frame = decoration_box.text_frame
+        decoration_frame.text = "✠ ✠ ✠"  # Christian cross symbols
+        decoration_paragraph = decoration_frame.paragraphs[0]
+        decoration_paragraph.font.size = Pt(28)
+        decoration_paragraph.alignment = PP_ALIGN.CENTER
+        decoration_paragraph.font.color.rgb = RGBColor(100, 0, 0)  # Matching dark red
+
     def _add_reading_slide(self, prs, reading_title, reading_text):
         """Add reading slides with large, readable text"""
         # Split long text across multiple slides if necessary
@@ -729,6 +923,33 @@ def main(include_invitatory=True, preview_mode=False):
                     content_text = generator._get_liturgical_content_text(item, extracted)
                     print(f"\nSlide {i+1}: {item}")
                     print(f"Content: {content_text[:100]}...")
+            
+            # Add Daily Mass structure logging
+            print("\n--- DAILY MASS STRUCTURE ---")
+            mass_structure = generator.get_daily_mass_structure()
+            daily_mass = mass_structure['DailyMass']
+            
+            print("Header Slide: Daily Catholic Mass")
+            print("Content: Large red title 'Daily Catholic Mass' with subtitle 'Structure of the Roman Rite'")
+            
+            section_names = {
+                'IntroductoryRites': 'Introductory Rites',
+                'LiturgyOfTheWord': 'Liturgy of the Word',
+                'LiturgyOfTheEucharist': 'Liturgy of the Eucharist',
+                'CommunionRite': 'Communion Rite',
+                'ConcludingRite': 'Concluding Rite'
+            }
+            
+            slide_count = 1
+            for section_name, section_data in daily_mass.items():
+                display_name = section_names.get(section_name, section_name)
+                print(f"\n--- {display_name.upper()} SLIDES ---")
+                for i, item in enumerate(section_data['sequence']):
+                    print(f"\nSlide {slide_count}: {item}")
+                    slide_count += 1
+            
+            print(f"\nMass structure complete! Total slides: {slide_count - 1}")
+            print("Mass ends with 'Thanks be to God' - no additional slides.")
             return
     
     print("\nFetching daily readings...")
