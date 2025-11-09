@@ -77,6 +77,183 @@ class EnhancedCatholicSlideGenerator:
         
         return liturgy_structure
 
+    def extract_liturgical_content(self, soup, full_text):
+        """
+        Extract specific liturgical content from iBreviary
+        """
+        content = {}
+        
+        # Clean up the text for better parsing
+        clean_text = re.sub(r'\s+', ' ', full_text)
+        clean_text = re.sub(r'[\r\n]+', ' ', clean_text)
+        
+        # Extract Invitatory Antiphon
+        invitatory_patterns = [
+            r'(?:Come, worship the Lord[^.]*alleluia\.)',
+            r'(?:Come, let us worship[^.]*\.)',
+            r'(?:The Lord has risen[^.]*alleluia\.)',
+            r'(?:Come, let us adore[^.]*\.)'
+        ]
+        
+        for pattern in invitatory_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                content['invitatory_antiphon'] = self._clean_liturgical_text(match.group(0))
+                break
+        
+        # Extract Hymn - look for content after "Hymn" keyword
+        hymn_patterns = [
+            r'Hymn\s+([^.]+(?:\.[^.]*?){1,4}\.)',
+            r'Hymn[:\s]+([A-Z][^.]+(?:\.[^.]*?){1,4}\.)'
+        ]
+        
+        for pattern in hymn_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                hymn_text = self._clean_liturgical_text(match.group(1))
+                if len(hymn_text) > 30:  # Make sure it's substantial content
+                    content['hymn'] = hymn_text[:400] + "..." if len(hymn_text) > 400 else hymn_text
+                    break
+        
+        # Extract Antiphons with better pattern matching
+        antiphon_patterns = [
+            (r'Ant\.\s*1[:\s]+([^.]+\.)', 'antiphon_1'),
+            (r'Antiphon\s*1[:\s]+([^.]+\.)', 'antiphon_1'),
+            (r'Ant\.\s*2[:\s]+([^.]+\.)', 'antiphon_2'),
+            (r'Antiphon\s*2[:\s]+([^.]+\.)', 'antiphon_2'),
+            (r'Ant\.\s*3[:\s]+([^.]+\.)', 'antiphon_3'),
+            (r'Antiphon\s*3[:\s]+([^.]+\.)', 'antiphon_3'),
+        ]
+        
+        for pattern, key in antiphon_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                antiphon_text = self._clean_liturgical_text(match.group(1))
+                if len(antiphon_text) > 10:
+                    content[key] = antiphon_text
+                break
+        
+        # Extract Psalm content more carefully
+        psalm_patterns = [
+            r'Psalm\s*\d+[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,2}\.)',
+            r'(?:Come, let us sing to the Lord[^.]*\.)',
+            r'(?:Let us approach him with praise[^.]*\.)',
+        ]
+        
+        psalms = []
+        for pattern in psalm_patterns:
+            matches = re.finditer(pattern, clean_text, re.IGNORECASE)
+            for match in matches:
+                psalm_text = self._clean_liturgical_text(match.group(1) if match.groups() else match.group(0))
+                if len(psalm_text) > 30 and psalm_text not in psalms:
+                    psalms.append(psalm_text)
+        
+        if psalms:
+            content['psalm_1'] = psalms[0][:300] + "..." if len(psalms[0]) > 300 else psalms[0]
+            if len(psalms) > 1:
+                content['psalm_2'] = psalms[1][:300] + "..." if len(psalms[1]) > 300 else psalms[1]
+        
+        # Extract Old Testament Canticle
+        canticle_patterns = [
+            r'Canticle[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,3}\.)',
+            r'Old Testament Canticle[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,3}\.)',
+        ]
+        
+        for pattern in canticle_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                canticle_text = self._clean_liturgical_text(match.group(1))
+                if len(canticle_text) > 20:
+                    content['old_testament_canticle'] = canticle_text[:300] + "..." if len(canticle_text) > 300 else canticle_text
+                    break
+        
+        # Extract Short Reading
+        reading_patterns = [
+            r'Short Reading[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,2}\.)',
+            r'Reading[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,2}\.)',
+        ]
+        
+        for pattern in reading_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                reading_text = self._clean_liturgical_text(match.group(1))
+                if len(reading_text) > 20:
+                    content['short_reading'] = reading_text[:250] + "..." if len(reading_text) > 250 else reading_text
+                    break
+        
+        # Extract Responsory
+        responsory_patterns = [
+            r'Responsory[:\s]*([A-Z][^.]+\.)',
+            r'℟[:\s]*([A-Z][^.]+\.)',
+            r'Response[:\s]*([A-Z][^.]+\.)',
+        ]
+        
+        for pattern in responsory_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                responsory_text = self._clean_liturgical_text(match.group(1))
+                if len(responsory_text) > 10:
+                    content['responsory'] = responsory_text
+                    break
+        
+        # Extract Gospel Canticle Antiphon
+        gospel_antiphon_patterns = [
+            r'Gospel Canticle Antiphon[:\s]*([A-Z][^.]+\.)',
+            r'Benedictus Antiphon[:\s]*([A-Z][^.]+\.)',
+            r'Canticle of Zechariah[:\s]*([A-Z][^.]+\.)',
+        ]
+        
+        for pattern in gospel_antiphon_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                antiphon_text = self._clean_liturgical_text(match.group(1))
+                if len(antiphon_text) > 10:
+                    content['gospel_canticle_antiphon'] = antiphon_text
+                    break
+        
+        # Extract Intercessions
+        intercessions_pattern = r'Intercessions[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,2}\.)'
+        intercessions_match = re.search(intercessions_pattern, clean_text, re.IGNORECASE)
+        if intercessions_match:
+            intercessions_text = self._clean_liturgical_text(intercessions_match.group(1))
+            if len(intercessions_text) > 20:
+                content['intercessions'] = intercessions_text[:300] + "..." if len(intercessions_text) > 300 else intercessions_text
+        
+        # Extract Concluding Prayer
+        prayer_patterns = [
+            r'Concluding Prayer[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,2}\.)',
+            r'Prayer[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,2}\.)',
+            r'Collect[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,2}\.)',
+        ]
+        
+        for pattern in prayer_patterns:
+            match = re.search(pattern, clean_text, re.IGNORECASE)
+            if match:
+                prayer_text = self._clean_liturgical_text(match.group(1))
+                if len(prayer_text) > 20:
+                    content['concluding_prayer'] = prayer_text[:250] + "..." if len(prayer_text) > 250 else prayer_text
+                    break
+        
+        return content
+
+    def _clean_liturgical_text(self, text):
+        """
+        Clean up extracted liturgical text
+        """
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text.strip())
+        
+        # Remove common web artifacts
+        text = re.sub(r'(?:More|Breviary|Missal|Prayers)\s*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s*\|\s*', ' ', text)
+        text = re.sub(r'^\s*[:\-]\s*', '', text)
+        
+        # Fix punctuation
+        text = re.sub(r'\s+([,.!?;:])', r'\1', text)
+        text = re.sub(r'([.!?])\s*([A-Z])', r'\1 \2', text)
+        
+        return text.strip()
+
     def fetch_morning_prayer_detailed(self):
         """
         Fetch and parse morning prayer with detailed extraction from iBreviary
@@ -93,27 +270,8 @@ class EnhancedCatholicSlideGenerator:
             # Get the liturgy structure
             liturgy = self.get_liturgy_of_hours_structure(is_first_hour=True)
             
-            # Try to extract actual content from iBreviary for specific elements
-            liturgy['extracted_content'] = {}
-            
-            # Find the main invitatory antiphon
-            invitatory_pattern = r'(Come, worship the Lord[^.]*alleluia\.)'
-            invitatory_match = re.search(invitatory_pattern, full_text, re.IGNORECASE)
-            if invitatory_match:
-                liturgy['extracted_content']['invitatory_antiphon'] = invitatory_match.group(1).strip()
-            
-            # Find psalm content
-            psalm_patterns = [
-                r'Come, let us sing to the Lord[^.]*\.',
-                r'Let us approach him with praise[^.]*\.',
-                r'The Lord is God, the mighty God[^.]*\.',
-            ]
-            
-            for pattern in psalm_patterns:
-                match = re.search(pattern, full_text, re.IGNORECASE)
-                if match:
-                    liturgy['extracted_content']['psalm_verse'] = match.group(0).strip()
-                    break
+            # Extract actual liturgical content
+            liturgy['extracted_content'] = self.extract_liturgical_content(soup, full_text)
             
             return liturgy
             
@@ -185,12 +343,14 @@ class EnhancedCatholicSlideGenerator:
         self._add_enhanced_title_slide(prs, prayer_data.get('date', ''))
         
         # 2. Liturgy of the Hours - Invitatory (if first hour)
+        extracted_content = prayer_data.get('extracted_content', {}) if prayer_data else {}
+        
         if prayer_data and prayer_data.get('is_first_hour') and prayer_data.get('invitatory'):
-            self._add_liturgy_sequence_slides(prs, "Invitatory", prayer_data['invitatory']['sequence'])
+            self._add_liturgy_sequence_slides(prs, "Invitatory", prayer_data['invitatory']['sequence'], extracted_content)
         
         # 3. Liturgy of the Hours - Morning Prayer
         if prayer_data and prayer_data.get('morning_prayer'):
-            self._add_liturgy_sequence_slides(prs, "Morning Prayer", prayer_data['morning_prayer']['sequence'])
+            self._add_liturgy_sequence_slides(prs, "Morning Prayer", prayer_data['morning_prayer']['sequence'], extracted_content)
         
         # 4. First Reading slide
         if readings_data and readings_data.get('first_reading'):
@@ -210,17 +370,29 @@ class EnhancedCatholicSlideGenerator:
         
         # Remove existing file if it exists (replacing old file with new for same date)
         if os.path.exists(output_path):
-            os.remove(output_path)
-            print(f"Replaced existing file: {output_path}")
+            try:
+                os.remove(output_path)
+                print(f"Replaced existing file: {output_path}")
+            except PermissionError:
+                print(f"Warning: Could not replace existing file (may be open in PowerPoint): {output_path}")
+                # Create a new filename with timestamp
+                timestamp = datetime.now().strftime("%H%M%S")
+                base_name, ext = os.path.splitext(output_filename)
+                output_filename = f"{base_name}_{timestamp}{ext}"
+                output_path = os.path.join(output_dir, output_filename)
+                print(f"Creating new file instead: {output_path}")
         
         # Save the presentation
         prs.save(output_path)
         print(f"Enhanced slides saved as: {output_path}")
 
-    def _add_liturgy_sequence_slides(self, prs, section_title, sequence):
+    def _add_liturgy_sequence_slides(self, prs, section_title, sequence, extracted_content=None):
         """
         Add slides for Liturgy of the Hours sequences (Invitatory and Morning Prayer)
         """
+        if not extracted_content:
+            extracted_content = {}
+            
         for i, item in enumerate(sequence):
             slide_layout = prs.slide_layouts[6]  # Blank layout
             slide = prs.slides.add_slide(slide_layout)
@@ -235,6 +407,9 @@ class EnhancedCatholicSlideGenerator:
             title_para.font.color.rgb = RGBColor(0, 51, 102)  # Dark blue
             title_para.alignment = PP_ALIGN.CENTER
             
+            # Get the actual content for this liturgical element
+            content_text = self._get_liturgical_content_text(item, extracted_content)
+            
             # Main content
             content_box = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(11.33), Inches(4.5))
             content_frame = content_box.text_frame
@@ -247,13 +422,93 @@ class EnhancedCatholicSlideGenerator:
             # Determine text color and style based on content type
             text_color = self._get_liturgy_text_color(item)
             
-            content_frame.text = item
+            content_frame.text = content_text
             content_para = content_frame.paragraphs[0]
-            content_para.font.size = Pt(44)
+            
+            # Adjust font size based on content length
+            if len(content_text) <= 150:
+                content_para.font.size = Pt(44)
+            elif len(content_text) <= 300:
+                content_para.font.size = Pt(36)
+            elif len(content_text) <= 600:
+                content_para.font.size = Pt(30)
+            else:
+                content_para.font.size = Pt(24)
+                
             content_para.font.bold = True
             content_para.font.color.rgb = text_color
             content_para.alignment = PP_ALIGN.CENTER
             content_para.line_spacing = 1.2
+
+    def _get_liturgical_content_text(self, item, extracted_content):
+        """
+        Get the actual liturgical content text for each item
+        """
+        item_lower = item.lower()
+        
+        # Static liturgical texts
+        if "opening verse: lord, open my lips" in item_lower:
+            return "Lord, open my lips."
+        elif "response: and my mouth will proclaim" in item_lower:
+            return "And my mouth will proclaim your praise."
+        elif "opening verse: god, come to my assistance" in item_lower:
+            return "God, come to my assistance."
+        elif "response: lord, make haste to help me" in item_lower:
+            return "Lord, make haste to help me."
+        elif "glory to the father" in item_lower:
+            return "Glory to the Father, and to the Son, and to the Holy Spirit. As it was in the beginning, is now, and will be forever. Amen."
+        elif "alleluia" in item_lower and "omit during lent" in item_lower:
+            return "Alleluia! (Omit during Lent)"
+        elif "the lord's prayer" in item_lower:
+            return "Our Father, who art in heaven, hallowed be thy name; thy kingdom come, thy will be done on earth as it is in heaven. Give us this day our daily bread, and forgive us our trespasses, as we forgive those who trespass against us; and lead us not into temptation, but deliver us from evil. Amen."
+        elif "benedictus" in item_lower:
+            return "Blessed be the Lord, the God of Israel; he has come to his people and set them free. He has raised up for us a mighty savior, born of the house of his servant David..."
+        
+        # Dynamic content from iBreviary
+        elif "invitatory antiphon" in item_lower:
+            return extracted_content.get('invitatory_antiphon', "Come, let us worship the Lord.")
+        elif "invitatory psalm" in item_lower:
+            return extracted_content.get('psalm_1', "Come, let us sing to the Lord and shout with joy to the Rock who saves us...")
+        elif "hymn" in item_lower:
+            return extracted_content.get('hymn', "[Hymn for today - to be sung or recited]")
+        elif "antiphon 1" in item_lower and "repeat" not in item_lower:
+            return extracted_content.get('antiphon_1', "[Antiphon 1 for today]")
+        elif "repeat antiphon 1" in item_lower:
+            return extracted_content.get('antiphon_1', "[Repeat Antiphon 1]")
+        elif "psalm 1" in item_lower:
+            return extracted_content.get('psalm_1', "[Psalm 1 for today]")
+        elif "antiphon 2" in item_lower and "repeat" not in item_lower:
+            return extracted_content.get('antiphon_2', "[Antiphon 2 for today]")
+        elif "repeat antiphon 2" in item_lower:
+            return extracted_content.get('antiphon_2', "[Repeat Antiphon 2]")
+        elif "psalm 2" in item_lower:
+            return extracted_content.get('psalm_2', "[Psalm 2 for today]")
+        elif "antiphon 3" in item_lower and "repeat" not in item_lower:
+            return extracted_content.get('antiphon_3', "[Antiphon 3 for today]")
+        elif "repeat antiphon 3" in item_lower:
+            return extracted_content.get('antiphon_3', "[Repeat Antiphon 3]")
+        elif "old testament canticle" in item_lower:
+            return extracted_content.get('old_testament_canticle', "[Old Testament Canticle for today]")
+        elif "short reading" in item_lower:
+            return extracted_content.get('short_reading', "[Short Scripture reading for today]")
+        elif "responsory" in item_lower:
+            return extracted_content.get('responsory', "[Responsory for today]")
+        elif "gospel canticle antiphon" in item_lower and "repeat" not in item_lower:
+            return extracted_content.get('gospel_canticle_antiphon', "[Gospel Canticle Antiphon for today]")
+        elif "repeat gospel canticle antiphon" in item_lower:
+            return extracted_content.get('gospel_canticle_antiphon', "[Repeat Gospel Canticle Antiphon]")
+        elif "intercessions" in item_lower:
+            return extracted_content.get('intercessions', "[Intercessions for today]")
+        elif "concluding prayer" in item_lower:
+            return extracted_content.get('concluding_prayer', "[Concluding Prayer/Collect for today]")
+        elif "blessing" in item_lower or "dismissal" in item_lower:
+            return "May almighty God bless you, the Father, and the Son, and the Holy Spirit. Amen. Go in peace."
+        elif "marian antiphon" in item_lower:
+            return "Hail Holy Queen, Mother of mercy, our life, our sweetness, and our hope..."
+        
+        # Default fallback
+        else:
+            return item
     
     def _get_liturgy_text_color(self, item):
         """
@@ -410,7 +665,7 @@ class EnhancedCatholicSlideGenerator:
         
         return final_chunks if final_chunks else [text[:max_chars_per_slide]]
 
-def main(include_invitatory=True):
+def main(include_invitatory=True, preview_mode=False):
     print("Enhanced Catholic Slide Generator")
     print("=" * 40)
     
@@ -432,10 +687,49 @@ def main(include_invitatory=True):
         # Show extracted content if available
         if prayer_data.get('extracted_content'):
             extracted = prayer_data['extracted_content']
-            if extracted.get('invitatory_antiphon'):
-                print(f"✓ Found Invitatory Antiphon: {extracted['invitatory_antiphon'][:50]}...")
-            if extracted.get('psalm_verse'):
-                print(f"✓ Found Psalm verse: {extracted['psalm_verse'][:50]}...")
+            print(f"✓ Extracted {len(extracted)} liturgical elements:")
+            
+            content_items = [
+                ('invitatory_antiphon', 'Invitatory Antiphon'),
+                ('hymn', 'Hymn'),
+                ('antiphon_1', 'Antiphon 1'),
+                ('antiphon_2', 'Antiphon 2'), 
+                ('antiphon_3', 'Antiphon 3'),
+                ('psalm_1', 'Psalm 1'),
+                ('psalm_2', 'Psalm 2'),
+                ('old_testament_canticle', 'Old Testament Canticle'),
+                ('short_reading', 'Short Reading'),
+                ('responsory', 'Responsory'),
+                ('gospel_canticle_antiphon', 'Gospel Canticle Antiphon'),
+                ('intercessions', 'Intercessions'),
+                ('concluding_prayer', 'Concluding Prayer')
+            ]
+            
+            for key, name in content_items:
+                if extracted.get(key):
+                    preview = extracted[key][:50] + "..." if len(extracted[key]) > 50 else extracted[key]
+                    print(f"  • {name}: {preview}")
+        
+        # Preview mode - show what will be on slides
+        if preview_mode:
+            print("\n" + "=" * 50)
+            print("SLIDE CONTENT PREVIEW")
+            print("=" * 50)
+            
+            if prayer_data.get('is_first_hour') and prayer_data.get('invitatory'):
+                print("\n--- INVITATORY SLIDES ---")
+                for i, item in enumerate(prayer_data['invitatory']['sequence']):
+                    content_text = generator._get_liturgical_content_text(item, extracted)
+                    print(f"\nSlide {i+1}: {item}")
+                    print(f"Content: {content_text[:100]}...")
+            
+            if prayer_data.get('morning_prayer'):
+                print("\n--- MORNING PRAYER SLIDES ---")
+                for i, item in enumerate(prayer_data['morning_prayer']['sequence']):
+                    content_text = generator._get_liturgical_content_text(item, extracted)
+                    print(f"\nSlide {i+1}: {item}")
+                    print(f"Content: {content_text[:100]}...")
+            return
     
     print("\nFetching daily readings...")
     readings_data = generator.fetch_daily_readings_detailed()
@@ -453,8 +747,14 @@ def main(include_invitatory=True):
 if __name__ == "__main__":
     # Check for command line arguments
     include_invitatory = True
-    if len(sys.argv) > 1 and sys.argv[1].lower() in ['--no-invitatory', '-n']:
-        include_invitatory = False
-        print("Note: Running without Invitatory (not first hour)")
+    preview_mode = False
     
-    main(include_invitatory)
+    for arg in sys.argv[1:]:
+        if arg.lower() in ['--no-invitatory', '-n']:
+            include_invitatory = False
+            print("Note: Running without Invitatory (not first hour)")
+        elif arg.lower() in ['--preview', '-p']:
+            preview_mode = True
+            print("Note: Running in preview mode (showing slide content without generating PowerPoint)")
+    
+    main(include_invitatory, preview_mode)
