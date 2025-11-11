@@ -501,6 +501,9 @@ class BBGRLSlideGeneratorV2:
         
         slide_count = 0
         
+        # Add blank black slide at the very beginning
+        slide_count = self._create_initial_blank_slide(prs, slide_count)
+        
         # Apply reference template structure to current liturgical data
         slide_count = self._create_opening_slides(prs, liturgical_data, slide_count)
         slide_count = self._create_psalmody_section(prs, liturgical_data, slide_count)
@@ -515,7 +518,7 @@ class BBGRLSlideGeneratorV2:
         slide_count = self._create_st_joseph_prayer(prs, liturgical_data, slide_count)
         
         # Save presentation
-        output_dir = "output"
+        output_dir = "output_v2"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
@@ -528,6 +531,20 @@ class BBGRLSlideGeneratorV2:
         print(f"Target slides (reference): {self.reference_template['metadata']['total_expected_slides']}")
         
         return output_path
+
+    def _create_initial_blank_slide(self, prs, slide_count):
+        """Create initial blank black slide at the very beginning"""
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+        
+        # Make the slide background black
+        background = slide.background
+        fill = background.fill
+        fill.solid()
+        fill.fore_color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        print(f"Created slide {slide_count}: Initial blank black slide")
+        return slide_count
 
     def _create_opening_slides(self, prs, liturgical_data, slide_count):
         """Create opening slides following reference template"""

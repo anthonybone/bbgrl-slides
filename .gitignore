@@ -1,6 +1,7 @@
 # Generated PowerPoint files
 *.pptx
 output/
+output_v2/
 
 # Python cache files
 __pycache__/
