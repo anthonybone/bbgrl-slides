@@ -11,11 +11,17 @@ from bs4 import BeautifulSoup
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import PP_ALIGN, MSO_AUTO_SIZE
 import re
 from datetime import datetime, timedelta
 import sys
 import os
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import time
 
 class BBGRLSlideGeneratorV2:
     def __init__(self):
@@ -27,6 +33,9 @@ class BBGRLSlideGeneratorV2:
         
         # Reference structure template (based on the analyzed PowerPoint)
         self.reference_template = self._get_reference_template()
+        
+        # Selenium driver (initialized when needed)
+        self.driver = None
 
     def _get_reference_template(self):
         """
@@ -166,7 +175,7 @@ class BBGRLSlideGeneratorV2:
                 "static_content": self._get_static_devotional_content()
             }
             
-            print(f"✓ Successfully fetched liturgical data for {structured_data['date']}")
+            print(f"Successfully fetched liturgical data for {structured_data['date']}")
             return structured_data
             
         except Exception as e:
@@ -174,24 +183,183 @@ class BBGRLSlideGeneratorV2:
             print("Using fallback template structure...")
             return self._get_fallback_data(target_date)
 
+    def _navigate_ibreviary_to_date(self, target_date):
+        """
+        Navigate iBreviary mobile site to a specific date and return the Morning Prayer HTML
+        
+        Steps:
+        1. Click the "More" link
+        2. Update the date input boxes (giorno=day, mese=month dropdown, anno=year)
+        3. Click the "Breviary" link
+        4. Click on the "Morning Prayer" link
+        
+        Returns the full HTML of the Morning Prayer page for the specified date
+        """
+        try:
+            # Initialize Chrome in headless mode
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            
+            self.driver = webdriver.Chrome(options=chrome_options)
+            wait = WebDriverWait(self.driver, 10)
+            
+            print(f"  -> Navigating to iBreviary mobile site...")
+            self.driver.get(self.base_url)
+            time.sleep(3)  # Give page more time to load
+            
+            # Step 1: Click the "More" link
+            print(f"  -> Clicking 'More' menu...")
+            try:
+                # Try multiple approaches to find the More link
+                more_link = None
+                
+                # Approach 1: By link text
+                try:
+                    more_link = wait.until(EC.presence_of_element_located((By.LINK_TEXT, "More")))
+                except:
+                    pass
+                
+                # Approach 2: By partial link text
+                if not more_link:
+                    try:
+                        more_link = wait.until(EC.presence_of_element_located((By.PARTIAL_LINK_TEXT, "More")))
+                    except:
+                        pass
+                
+                # Approach 3: By href containing opzioni.php
+                if not more_link:
+                    try:
+                        more_link = wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'opzioni.php')]")))
+                    except:
+                        pass
+                
+                if more_link:
+                    # Scroll to element and click
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", more_link)
+                    time.sleep(0.5)
+                    more_link.click()
+                    time.sleep(2)
+                else:
+                    print(f"  ⚠ Could not find 'More' link")
+                    return None
+                    
+            except Exception as e:
+                print(f"  ⚠ Error clicking 'More' link: {e}")
+                return None
+            
+            # Step 2: Update date input boxes
+            print(f"  -> Setting date to {target_date.strftime('%d/%m/%Y')}...")
+            day = target_date.day
+            month = target_date.month  # 1-12
+            year = target_date.year
+            
+            try:
+                # Fill day field (input name="giorno")
+                day_field = self.driver.find_element(By.NAME, "giorno")
+                day_field.clear()
+                day_field.send_keys(str(day))
+                print(f"    Set day: {day}")
+                
+                # Select month dropdown (select name="mese")
+                from selenium.webdriver.support.select import Select
+                month_dropdown = Select(self.driver.find_element(By.NAME, "mese"))
+                month_dropdown.select_by_index(month - 1)  # Month indices are 0-based
+                print(f"    Set month: {month}")
+                
+                # Fill year field (input name="anno")
+                year_field = self.driver.find_element(By.NAME, "anno")
+                year_field.clear()
+                year_field.send_keys(str(year))
+                print(f"    Set year: {year}")
+                
+                # Click the OK button to apply the date change
+                print(f"    Clicking 'OK' button to apply date...")
+                ok_button = self.driver.find_element(By.NAME, "ok")
+                ok_button.click()
+                time.sleep(2)  # Wait for page to reload with new date
+                
+            except Exception as e:
+                print(f"  ⚠ Could not set date fields: {e}")
+                return None
+            
+            # Step 3: Click the "Breviary" link
+            print(f"  -> Clicking 'Breviary' link...")
+            try:
+                breviary_link = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Breviary")))
+                breviary_link.click()
+                time.sleep(2)
+            except Exception as e:
+                print(f"  ⚠ Could not find 'Breviary' link: {e}")
+                return None
+            
+            # Step 4: Click on the "Morning Prayer" link
+            print(f"  -> Clicking 'Morning Prayer' link...")
+            try:
+                # Try various text options for Morning Prayer
+                morning_prayer_link = None
+                for text in ["Morning Prayer", "Lauds", "Lodi"]:
+                    try:
+                        morning_prayer_link = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, text)))
+                        break
+                    except:
+                        continue
+                
+                if morning_prayer_link:
+                    morning_prayer_link.click()
+                    time.sleep(2)
+                else:
+                    print("  ⚠ Could not find 'Morning Prayer' link")
+                    return None
+                    
+            except Exception as e:
+                print(f"  ⚠ Error clicking Morning Prayer: {e}")
+                return None
+            
+            # Get the final page HTML
+            html_content = self.driver.page_source
+            
+            print(f"  Successfully navigated to Morning Prayer for {target_date.strftime('%B %d, %Y')}")
+            
+            return html_content
+            
+        except Exception as e:
+            print(f"  Error during Selenium navigation: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+        
+        finally:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+
     def _fetch_morning_prayer_structured(self, target_date):
         """
         Fetch morning prayer and structure it to match the reference template exactly
+        Uses Selenium to navigate iBreviary to the specific date
         """
-        # For iBreviary, we might need to adjust URL parameters for specific dates
-        # For now, using current day's liturgy
-        url = f"{self.base_url}breviario.php?s=lodi"
-        
         try:
-            response = self.session.get(url)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Use Selenium to navigate to the specific date
+            print(f"  Fetching Morning Prayer using Selenium navigation...")
+            html_content = self._navigate_ibreviary_to_date(target_date)
+            
+            if not html_content:
+                print(f"  ⚠ Selenium navigation failed, using fallback data")
+                return self._get_fallback_morning_prayer()
+            
+            # Parse the HTML content
+            soup = BeautifulSoup(html_content, 'html.parser')
             full_text = soup.get_text()
             
             # Extract and structure the content to match reference format
+            # Pass soup object to antiphon_1 extraction for better HTML parsing
             structured = {
                 "psalmody": {
-                    "antiphon_1": self._extract_antiphon(full_text, 1),
+                    "antiphon_1": self._extract_antiphon_and_psalm_info(soup, 1),
                     "psalm_1": self._extract_psalm_verses(full_text, 1),
                     "antiphon_2": self._extract_antiphon(full_text, 2), 
                     "canticle": self._extract_canticle_verses(full_text),
@@ -256,6 +424,107 @@ class BBGRLSlideGeneratorV2:
             print(f"Error parsing daily readings: {e}")
             return self._get_fallback_readings()
 
+    def _extract_antiphon_and_psalm_info(self, text, number):
+        """Extract antiphon text and associated psalm information
+        
+        Note: 'text' parameter should be the BeautifulSoup object, not plain text,
+        when called from _fetch_morning_prayer_structured
+        """
+        # If text is a BeautifulSoup object, extract from HTML structure
+        if hasattr(text, 'find_all'):
+            soup = text
+            text_content = soup.get_text()
+            
+            # Extract antiphon text from plain text
+            antiphon_text = ""
+            if number == 1:
+                antiphon_patterns = [
+                    r'Ant\.\s+([^.]+\.)',  # Match "Ant. " followed by text until first period
+                    rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
+                    rf'Antiphon\s*{number}[:\s]+([^.]+\.)',
+                    r'Antiphon[:\s]+([^.]+\.)'
+                ]
+            else:
+                antiphon_patterns = [
+                    rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
+                    rf'Antiphon\s*{number}[:\s]+([^.]+\.)'
+                ]
+            
+            for pattern in antiphon_patterns:
+                match = re.search(pattern, text_content, re.IGNORECASE)
+                if match:
+                    antiphon_text = match.group(1).strip()
+                    break
+            
+            # Extract psalm info from HTML structure for first antiphon
+            psalm_title = ""
+            psalm_subtitle = ""
+            
+            if number == 1:
+                # Look for the first <span class="rubrica"> that contains "Psalm" after the antiphon
+                # The rubrica class contains the red psalm titles and subtitles
+                rubrica_spans = soup.find_all('span', class_='rubrica')
+                
+                for span in rubrica_spans:
+                    span_text = span.get_text(strip=True)
+                    # Look for pattern like "Psalm 95A call to praise God"
+                    psalm_match = re.match(r'Psalm\s+(\d+)(?::(\d+)(?:-(\d+))?)?(.+)?', span_text)
+                    if psalm_match:
+                        psalm_num = psalm_match.group(1)
+                        verse_start = psalm_match.group(2)
+                        verse_end = psalm_match.group(3)
+                        subtitle = psalm_match.group(4)
+                        
+                        # Build psalm title
+                        if verse_start and verse_end:
+                            psalm_title = f"Psalm {psalm_num}:{verse_start}-{verse_end}"
+                        elif verse_start:
+                            psalm_title = f"Psalm {psalm_num}:{verse_start}"
+                        else:
+                            psalm_title = f"Psalm {psalm_num}"
+                        
+                        # Extract subtitle if present
+                        if subtitle:
+                            psalm_subtitle = subtitle.strip()
+                        
+                        # We found the first psalm, break
+                        break
+            
+            return {
+                "text": antiphon_text if antiphon_text else "",
+                "format": "all_response",
+                "psalm_title": psalm_title,
+                "psalm_subtitle": psalm_subtitle
+            }
+        
+        # Fallback: if plain text is passed (for backwards compatibility)
+        if number == 1:
+            antiphon_patterns = [
+                r'Ant\.\s+([^.]+\.)',
+                rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
+                rf'Antiphon\s*{number}[:\s]+([^.]+\.)',
+                r'Antiphon[:\s]+([^.]+\.)'
+            ]
+        else:
+            antiphon_patterns = [
+                rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
+                rf'Antiphon\s*{number}[:\s]+([^.]+\.)'
+            ]
+        
+        antiphon_text = ""
+        for pattern in antiphon_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                antiphon_text = match.group(1).strip()
+                break
+        
+        return {
+            "text": antiphon_text if antiphon_text else "",
+            "format": "all_response",
+            "psalm_title": "",
+            "psalm_subtitle": ""
+        }
+
     def _extract_antiphon(self, text, number):
         """Extract antiphon text and structure it with priest/people alternation"""
         # Pattern to find antiphons
@@ -274,7 +543,7 @@ class BBGRLSlideGeneratorV2:
                 }
         
         return {
-            "text": f"[Antiphon {number} for today]",
+            "text": "",
             "format": "all_response"
         }
 
@@ -442,12 +711,12 @@ class BBGRLSlideGeneratorV2:
         """Fallback morning prayer structure if iBreviary fails"""
         return {
             "psalmody": {
-                "antiphon_1": {"text": "[Antiphon 1 for today]", "format": "all_response"},
-                "psalm_1": [{"speaker": "Priest", "text": "[Psalm verse - Priest]"}],
-                "antiphon_2": {"text": "[Antiphon 2 for today]", "format": "all_response"}, 
-                "canticle": [{"speaker": "Priest", "text": "[Canticle verse - Priest]"}],
-                "antiphon_3": {"text": "[Antiphon 3 for today]", "format": "all_response"},
-                "psalm_2": [{"speaker": "Priest", "text": "[Psalm verse - Priest]"}]
+                "antiphon_1": {"text": "", "format": "all_response", "psalm_title": "", "psalm_subtitle": ""},
+                "psalm_1": [{"speaker": "Priest", "text": ""}],
+                "antiphon_2": {"text": "", "format": "all_response"}, 
+                "canticle": [{"speaker": "Priest", "text": ""}],
+                "antiphon_3": {"text": "", "format": "all_response"},
+                "psalm_2": [{"speaker": "Priest", "text": ""}]
             }
         }
 
@@ -581,19 +850,96 @@ class BBGRLSlideGeneratorV2:
         return slide_count
 
     def _create_opening_slides(self, prs, liturgical_data, slide_count):
-        """Create opening slides following reference template"""
-        # Title slide
+        """Create opening slides following reference template
+        
+        Uses auto-fit functionality to automatically adjust text size based on content length.
+        This ensures text always fits within the designated space regardless of antiphon length.
+        """
+        # Title slide with PSALMODY heading, antiphon, and psalm information
         slide_count += 1
         slide = prs.slides.add_slide(prs.slide_layouts[6])
-        title_box = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(11.33), Inches(2))
+        
+        # PSALMODY title
+        title_box = slide.shapes.add_textbox(Inches(0.3), Inches(0.1), Inches(12.7), Inches(1.2))
         title_frame = title_box.text_frame
-        title_frame.text = f"{liturgical_data['date']} Morning Readings & Prayers"
+        title_frame.text = "PSALMODY"
         title_para = title_frame.paragraphs[0]
-        title_para.font.size = self.reference_template['formatting_rules']['font_sizes']['title']
+        title_para.font.size = Pt(80)
+        title_para.font.name = "Georgia"
         title_para.font.bold = True
-        title_para.font.color.rgb = self.reference_template['formatting_rules']['title_color']
+        title_para.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
         title_para.alignment = PP_ALIGN.CENTER
-        print(f"Created slide {slide_count}: Title slide")
+        
+        # Antiphon text with auto-fit
+        antiphon_1 = liturgical_data['morning_prayer']['psalmody']['antiphon_1']
+        
+        antiphon_box = slide.shapes.add_textbox(Inches(0.3), Inches(1.5), Inches(12.7), Inches(3.5))
+        antiphon_frame = antiphon_box.text_frame
+        antiphon_frame.word_wrap = True
+        
+        # Enable auto-fit to shrink text if needed
+        antiphon_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        # Create the paragraph with proper formatting
+        first_para = antiphon_frame.paragraphs[0]
+        first_para.alignment = PP_ALIGN.CENTER
+        
+        # Add "(All) Ant. 1 " in blue
+        first_run = first_para.add_run()
+        first_run.text = "(All) Ant. 1 "
+        first_run.font.size = Pt(52)
+        first_run.font.name = "Georgia" 
+        first_run.font.bold = True
+        first_run.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)
+        
+        # Add the antiphon text in black
+        second_run = first_para.add_run()
+        second_run.text = antiphon_1['text']
+        second_run.font.size = Pt(52)
+        second_run.font.name = "Georgia"
+        second_run.font.bold = True  
+        second_run.font.color.rgb = RGBColor(0, 0, 0)
+        
+        # Psalm title and subtitle with auto-fit
+        psalm_box = slide.shapes.add_textbox(Inches(0.3), Inches(5.3), Inches(12.7), Inches(2.0))
+        psalm_frame = psalm_box.text_frame
+        psalm_frame.word_wrap = True
+        
+        # Enable auto-fit to shrink text if needed
+        psalm_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        psalm_title = antiphon_1.get('psalm_title', '')
+        psalm_subtitle = antiphon_1.get('psalm_subtitle', '')
+        
+        if psalm_title or psalm_subtitle:
+            if psalm_title:
+                psalm_frame.text = psalm_title
+                psalm_para = psalm_frame.paragraphs[0]
+                psalm_para.font.size = Pt(60)
+                psalm_para.font.name = "Georgia"
+                psalm_para.font.bold = True
+                psalm_para.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
+                psalm_para.alignment = PP_ALIGN.LEFT
+            
+            if psalm_subtitle:
+                if psalm_title:
+                    subtitle_para = psalm_frame.add_paragraph()
+                    subtitle_para.text = psalm_subtitle
+                    subtitle_para.font.size = Pt(60)
+                    subtitle_para.font.name = "Georgia"
+                    subtitle_para.font.bold = True
+                    subtitle_para.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
+                    subtitle_para.alignment = PP_ALIGN.LEFT
+                else:
+                    psalm_frame.text = psalm_subtitle
+                    psalm_para = psalm_frame.paragraphs[0]
+                    psalm_para.font.size = Pt(60)
+                    psalm_para.font.name = "Georgia"
+                    psalm_para.font.bold = True
+                    psalm_para.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
+                    psalm_para.alignment = PP_ALIGN.LEFT
+        
+        print(f"Created slide {slide_count}: PSALMODY title slide")
         
         # Blank transition slide
         slide_count += 1
@@ -703,14 +1049,27 @@ class BBGRLSlideGeneratorV2:
         return slide_count + 12  # Placeholder
 
 def main():
+    import sys
+    
     print("BBGRL Slide Generator V2 - Template-Based Dynamic Generator")
     print("=" * 60)
     print("Fetching live liturgical data and applying reference structure...")
     
     generator = BBGRLSlideGeneratorV2()
     
-    # Generate slides for November 11, 2025
-    target_date = datetime(2025, 11, 11)
+    # Parse command line arguments for date
+    if len(sys.argv) > 1:
+        # Accept date in format YYYY-MM-DD
+        date_str = sys.argv[1]
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            print(f"Error: Invalid date format '{date_str}'. Use YYYY-MM-DD")
+            return
+    else:
+        # Default to November 11, 2025
+        target_date = datetime(2025, 11, 11)
+    
     print(f"Generating slides for: {target_date.strftime('%B %d, %Y')}")
     
     # Fetch liturgical data for the specified date
