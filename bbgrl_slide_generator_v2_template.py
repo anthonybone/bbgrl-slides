@@ -504,6 +504,9 @@ class BBGRLSlideGeneratorV2:
         # Add blank black slide at the very beginning
         slide_count = self._create_initial_blank_slide(prs, slide_count)
         
+        # Add Daily Morning Prayer image slide as second slide
+        slide_count = self._create_daily_morning_prayer_image_slide(prs, slide_count)
+        
         # Apply reference template structure to current liturgical data
         slide_count = self._create_opening_slides(prs, liturgical_data, slide_count)
         slide_count = self._create_psalmody_section(prs, liturgical_data, slide_count)
@@ -544,6 +547,37 @@ class BBGRLSlideGeneratorV2:
         fill.fore_color.rgb = RGBColor(0, 0, 0)  # Black
         
         print(f"Created slide {slide_count}: Initial blank black slide")
+        return slide_count
+
+    def _create_daily_morning_prayer_image_slide(self, prs, slide_count):
+        """Create Daily Morning Prayer image slide as second slide"""
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+        
+        # Path to the image file
+        image_path = "daily_morning_prayer.png"
+        
+        # Check if image exists
+        if os.path.exists(image_path):
+            # Get slide dimensions
+            slide_width = prs.slide_width
+            slide_height = prs.slide_height
+            
+            # Add image to fill the entire slide
+            slide.shapes.add_picture(image_path, 0, 0, slide_width, slide_height)
+            print(f"Created slide {slide_count}: Daily Morning Prayer image slide")
+        else:
+            # Fallback: create text slide if image not found
+            title_box = slide.shapes.add_textbox(Inches(1), Inches(3), Inches(11.33), Inches(2))
+            title_frame = title_box.text_frame
+            title_frame.text = "Daily Morning Prayer"
+            title_para = title_frame.paragraphs[0]
+            title_para.font.size = Pt(60)
+            title_para.font.bold = True
+            title_para.font.color.rgb = RGBColor(184, 134, 11)  # Gold color
+            title_para.alignment = PP_ALIGN.CENTER
+            print(f"Created slide {slide_count}: Daily Morning Prayer text slide (image not found)")
+        
         return slide_count
 
     def _create_opening_slides(self, prs, liturgical_data, slide_count):
