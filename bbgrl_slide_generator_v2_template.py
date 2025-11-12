@@ -478,48 +478,74 @@ class BBGRLSlideGeneratorV2:
                         print(f"  Found Antiphon 1 text: {antiphon_text[:50]}...")
                         break
                 
-                # Extract psalm info from the section after PSALMODY
+                # Now extract the red text that comes immediately after "Ant. 1" in the HTML
+                # This is the text in <span class="rubrica"> tags that appear right after the antiphon
+                # It typically shows "Psalm X:Y-Z" followed by a subtitle on the next line
+                try:
+                    # Find "Ant. 1" in a rubrica span using the soup object passed in
+                    ant1_rubrica = soup.find('span', class_='rubrica', string=re.compile(r'Ant\.\s*1'))
+                    if ant1_rubrica:
+                        # The next rubrica span should have the psalm info
+                        next_rubrica = ant1_rubrica.find_next('span', class_='rubrica')
+                        if next_rubrica:
+                            # Get the text content which should be something like "Psalm 63:2-9\nA soul thirsting for God"
+                            rubrica_text = next_rubrica.get_text(separator='\n').strip()
+                            lines = rubrica_text.split('\n')
+                            
+                            if lines:
+                                psalm_title = lines[0].strip()
+                                print(f"  Found red psalm title: {psalm_title}")
+                            
+                            if len(lines) > 1:
+                                psalm_subtitle = lines[1].strip()
+                                print(f"  Found red psalm subtitle: {psalm_subtitle}")
+                except Exception as e:
+                    print(f"  ⚠ Could not extract red psalm text from HTML: {e}")
+
+                
+                # Fallback: Extract psalm info from the section after PSALMODY using regex
                 # Look for the FIRST psalm pattern in text after PSALMODY and after the antiphon
-                # Pattern to match: Psalm 95, Psalm 95:1-5, Psalm 95A, etc.
-                # Capture up to a newline or another "Psalm" keyword
-                psalm_pattern = r'Psalm\s+(\d+)([A-Z])?(?::(\d+)(?:-(\d+))?)?\s*([^\n]*?)(?=\nPsalm|\n\n|Psalm\s+\d|$)'
-                psalm_matches = re.finditer(psalm_pattern, text_content, re.IGNORECASE)
-                
-                # Get the first psalm match
-                first_psalm_match = None
-                for match in psalm_matches:
-                    first_psalm_match = match
-                    break
-                
-                if first_psalm_match:
-                    psalm_num = first_psalm_match.group(1)
-                    psalm_letter = first_psalm_match.group(2) if first_psalm_match.group(2) else ""
-                    verse_start = first_psalm_match.group(3)
-                    verse_end = first_psalm_match.group(4)
-                    subtitle_raw = first_psalm_match.group(5)
+                if not psalm_title:
+                    # Pattern to match: Psalm 95, Psalm 95:1-5, Psalm 95A, etc.
+                    # Capture up to a newline or another "Psalm" keyword
+                    psalm_pattern = r'Psalm\s+(\d+)([A-Z])?(?::(\d+)(?:-(\d+))?)?\s*([^\n]*?)(?=\nPsalm|\n\n|Psalm\s+\d|$)'
+                    psalm_matches = re.finditer(psalm_pattern, text_content if isinstance(text_content, str) else str(text_content), re.IGNORECASE)
                     
-                    # Build psalm title
-                    if verse_start and verse_end:
-                        psalm_title = f"Psalm {psalm_num}{psalm_letter}:{verse_start}-{verse_end}"
-                    elif verse_start:
-                        psalm_title = f"Psalm {psalm_num}{psalm_letter}:{verse_start}"
-                    else:
-                        psalm_title = f"Psalm {psalm_num}{psalm_letter}"
+                    # Get the first psalm match
+                    first_psalm_match = None
+                    for match in psalm_matches:
+                        first_psalm_match = match
+                        break
                     
-                    # Extract subtitle if present
-                    if subtitle_raw:
-                        # Clean up subtitle - remove extra whitespace
-                        subtitle = subtitle_raw.strip()
-                        # Remove any text that looks like it's the start of another psalm reference
-                        subtitle = re.sub(r'Psalm\s+\d.*$', '', subtitle, flags=re.IGNORECASE).strip()
-                        # If subtitle contains "salm" (partial word), remove it
-                        subtitle = re.sub(r'\bP?salm\b.*$', '', subtitle, flags=re.IGNORECASE).strip()
-                        # Limit length
-                        if len(subtitle) > 100:
-                            subtitle = subtitle[:100].rsplit(' ', 1)[0] + '...'
-                        psalm_subtitle = subtitle
-                    
-                    print(f"  Found psalm: {psalm_title} - {psalm_subtitle}")
+                    if first_psalm_match:
+                        psalm_num = first_psalm_match.group(1)
+                        psalm_letter = first_psalm_match.group(2) if first_psalm_match.group(2) else ""
+                        verse_start = first_psalm_match.group(3)
+                        verse_end = first_psalm_match.group(4)
+                        subtitle_raw = first_psalm_match.group(5)
+                        
+                        # Build psalm title
+                        if verse_start and verse_end:
+                            psalm_title = f"Psalm {psalm_num}{psalm_letter}:{verse_start}-{verse_end}"
+                        elif verse_start:
+                            psalm_title = f"Psalm {psalm_num}{psalm_letter}:{verse_start}"
+                        else:
+                            psalm_title = f"Psalm {psalm_num}{psalm_letter}"
+                        
+                        # Extract subtitle if present
+                        if subtitle_raw:
+                            # Clean up subtitle - remove extra whitespace
+                            subtitle = subtitle_raw.strip()
+                            # Remove any text that looks like it's the start of another psalm reference
+                            subtitle = re.sub(r'Psalm\s+\d.*$', '', subtitle, flags=re.IGNORECASE).strip()
+                            # If subtitle contains "salm" (partial word), remove it
+                            subtitle = re.sub(r'\bP?salm\b.*$', '', subtitle, flags=re.IGNORECASE).strip()
+                            # Limit length
+                            if len(subtitle) > 100:
+                                subtitle = subtitle[:100].rsplit(' ', 1)[0] + '...'
+                            psalm_subtitle = subtitle
+                        
+                        print(f"  Found psalm: {psalm_title} - {psalm_subtitle}")
             else:
                 # For antiphons 2 and 3, use the original logic
                 antiphon_patterns = [
@@ -958,7 +984,7 @@ class BBGRLSlideGeneratorV2:
             if psalm_title:
                 psalm_frame.text = psalm_title
                 psalm_para = psalm_frame.paragraphs[0]
-                psalm_para.font.size = Pt(60)
+                psalm_para.font.size = Pt(44)
                 psalm_para.font.name = "Georgia"
                 psalm_para.font.bold = True
                 psalm_para.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
@@ -968,7 +994,7 @@ class BBGRLSlideGeneratorV2:
                 if psalm_title:
                     subtitle_para = psalm_frame.add_paragraph()
                     subtitle_para.text = psalm_subtitle
-                    subtitle_para.font.size = Pt(60)
+                    subtitle_para.font.size = Pt(44)
                     subtitle_para.font.name = "Georgia"
                     subtitle_para.font.bold = True
                     subtitle_para.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
@@ -976,7 +1002,7 @@ class BBGRLSlideGeneratorV2:
                 else:
                     psalm_frame.text = psalm_subtitle
                     psalm_para = psalm_frame.paragraphs[0]
-                    psalm_para.font.size = Pt(60)
+                    psalm_para.font.size = Pt(44)
                     psalm_para.font.name = "Georgia"
                     psalm_para.font.bold = True
                     psalm_para.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
