@@ -381,7 +381,7 @@ class BBGRLSlideGeneratorV2:
                     "psalm_1": self._extract_psalm_verses_from_html(soup, 1),
                     "antiphon_2": self._extract_antiphon(text_after_psalmody, 2),
                     "canticle_info": self._extract_canticle_info(soup, text_after_psalmody),
-                    "canticle": self._extract_canticle_verses(text_after_psalmody),
+                    "canticle": self._extract_canticle_verses(soup, text_after_psalmody),
                     "antiphon_3": self._extract_antiphon(text_after_psalmody, 3),
                     "psalm_2": self._extract_psalm_verses_from_html(soup, 2)
                 },
@@ -856,17 +856,158 @@ class BBGRLSlideGeneratorV2:
             {"speaker": "People", "text": f"[Psalm {psalm_number} verse 4 - People]"}
         ]
 
-    def _extract_canticle_verses(self, text):
-        """Extract canticle verses with priest/people alternation"""
-        # Structure canticle verses like the reference
-        fallback_verses = [
-            {"speaker": "Priest", "text": "[Canticle verse 1 - Priest]"},
-            {"speaker": "People", "text": "[Canticle verse 2 - People]"},
-            {"speaker": "Priest", "text": "[Canticle verse 3 - Priest]"},
-            {"speaker": "People", "text": "[Canticle verse 4 - People]"}
-        ]
+    def _extract_canticle_verses(self, soup, text=None):
+        """Extract canticle verses directly from HTML structure
         
-        return fallback_verses
+        Looks for the rubrica span with 'Canticle:', then extracts the canticle verses
+        which are plain text separated by <br><br> tags, stopping at "Glory to the Father"
+        or the next antiphon marker.
+        
+        Args:
+            soup: BeautifulSoup object of the HTML
+            text: Optional plain text fallback (not currently used)
+            
+        Returns:
+            dict with 'verses' list and 'omit_glory_be' boolean flag
+        """
+        verses = []
+        omit_glory_be = False  # Flag to track if Glory Be should be omitted
+        
+        try:
+            # Find the Canticle marker in the HTML (the one with verse references, not Gospel Canticle)
+            canticle_span = None
+            
+            for span in soup.find_all('span', class_='rubrica'):
+                span_text = span.get_text().strip()
+                # Look for "Canticle:" with verse references (contains numbers and colon)
+                if span_text.startswith('Canticle:') and re.search(r'\d+:\d+', span_text):
+                    canticle_span = span
+                    break
+            
+            if not canticle_span:
+                print(f"  ⚠ Could not find Canticle marker in HTML")
+                return self._get_fallback_canticle_verses()
+            
+            # Find the parent element and get its HTML
+            parent = canticle_span.parent
+            parent_html = str(parent)
+            
+            # Find the position of the canticle marker in the HTML
+            canticle_pos = parent_html.find(str(canticle_span))
+            if canticle_pos < 0:
+                return self._get_fallback_canticle_verses()
+            
+            # Get HTML after the canticle marker
+            html_after_canticle = parent_html[canticle_pos + len(str(canticle_span)):]
+            
+            # Check if "Glory to the Father is not said" appears BEFORE we trim the HTML
+            # This indicates we should omit the Glory Be slide after the canticle
+            # Pattern allows for HTML tags between words (e.g., </span>, <span class="rubrica">)
+            # Matches variations like "the Glory to the Father is not said" or "At the end of the canticle the Glory to the Father is not said"
+            if re.search(r'Glory\s+to\s+the\s+Father.*?is\s+not\s+said', html_after_canticle, re.IGNORECASE | re.DOTALL):
+                omit_glory_be = True
+                print(f"  ✓ Detected: Glory to the Father is not said for this canticle")
+            
+            # Find where to stop: "Glory to the Father" or next "Ant. 3"
+            stop_patterns = [
+                r'<span class="rubrica">Glory to the Father</span>',
+                r'<span class="rubrica">Ant\.\s*3</span>',
+                r'<span class="rubrica">Ant\.</span>',  # Repeated antiphon
+                r'Glory to the Father',  # Plain text version
+            ]
+            
+            end_pos = len(html_after_canticle)
+            for pattern in stop_patterns:
+                match = re.search(pattern, html_after_canticle, re.IGNORECASE)
+                if match:
+                    end_pos = min(end_pos, match.start())
+            
+            # Extract the canticle section HTML
+            canticle_html = html_after_canticle[:end_pos]
+            
+            # Parse to get the text, skipping rubrica (red) text and em tags
+            canticle_soup = BeautifulSoup(canticle_html, 'html.parser')
+            
+            # Remove the intro em tag (italic text)
+            for em in canticle_soup.find_all('em'):
+                em.decompose()
+            
+            # Get the remaining HTML and split by <br><br> to get verses/stanzas
+            remaining_html = str(canticle_soup)
+            
+            # Split by double br tags
+            verse_sections = re.split(r'<br\s*/?>\s*<br\s*/?>', remaining_html)
+            
+            verse_count = 0
+            skipped_first_section = False  # Track if we've skipped the antiphon
+            
+            for section in verse_sections:
+                # Parse this section to get clean text
+                section_soup = BeautifulSoup(section, 'html.parser')
+                
+                # Remove asterisks and daggers (rubrica spans)
+                for rubrica in section_soup.find_all('span', class_='rubrica'):
+                    rubrica.decompose()
+                
+                # Get text
+                verse_text = section_soup.get_text().strip()
+                
+                # Skip empty or short verses
+                if not verse_text or len(verse_text) < 20:
+                    continue
+                
+                # Skip the first valid section if it looks like the antiphon text
+                # The antiphon typically appears as the very first text section after "Canticle:"
+                # Only skip the FIRST occurrence to avoid false positives
+                if not skipped_first_section and verse_count == 0:
+                    # Check if this looks like an antiphon (relatively short, complete sentence)
+                    if len(verse_text) < 150 and verse_text.endswith('.'):
+                        print(f"  Skipping antiphon text in canticle extraction: {verse_text[:50]}...")
+                        skipped_first_section = True
+                        continue
+                
+                # Clean up: normalize whitespace
+                verse_text = re.sub(r'\s+', ' ', verse_text).strip()
+                
+                # Add period if needed
+                if not verse_text[-1] in '.!?"':
+                    verse_text += '.'
+                
+                # Alternate speaker
+                speaker = "Priest" if verse_count % 2 == 0 else "People"
+                
+                verses.append({
+                    "speaker": speaker,
+                    "text": verse_text
+                })
+                verse_count += 1
+            
+            if verses:
+                print(f"  Extracted {len(verses)} verses for Canticle")
+                return {
+                    "verses": verses,
+                    "omit_glory_be": omit_glory_be
+                }
+                
+        except Exception as e:
+            print(f"  ⚠ Error parsing canticle verses from HTML: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return self._get_fallback_canticle_verses()
+    
+    def _get_fallback_canticle_verses(self):
+        """Return fallback canticle verses when parsing fails"""
+        print(f"  Using fallback verses for Canticle")
+        return {
+            "verses": [
+                {"speaker": "Priest", "text": "[Canticle verse 1 - Priest]"},
+                {"speaker": "People", "text": "[Canticle verse 2 - People]"},
+                {"speaker": "Priest", "text": "[Canticle verse 3 - Priest]"},
+                {"speaker": "People", "text": "[Canticle verse 4 - People]"}
+            ],
+            "omit_glory_be": False  # Default to including Glory Be
+        }
 
     def _extract_canticle_info(self, soup, text):
         """Extract canticle title and subtitle (red text)
@@ -1482,8 +1623,125 @@ class BBGRLSlideGeneratorV2:
         
         print(f"Created slide {slide_count}: Canticle info")
         
-        # Continue with all psalmody elements following the same pattern...
-        # (This would continue with all the psalmody structure)
+        # Create canticle verses alternating priest/people (same pattern as psalm verses)
+        canticle_data = liturgical_data['morning_prayer']['psalmody']['canticle']
+        canticle_verses = canticle_data.get('verses', canticle_data) if isinstance(canticle_data, dict) else canticle_data
+        omit_glory_be = canticle_data.get('omit_glory_be', False) if isinstance(canticle_data, dict) else False
+        
+        for verse in canticle_verses:
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Create text box for the verse content with auto-fit
+            content_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+            content_frame = content_box.text_frame
+            content_frame.word_wrap = True
+            
+            # Enable auto-fit to make text as large as possible without crossing boundaries
+            content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            # Create paragraph
+            content_para = content_frame.paragraphs[0]
+            content_para.alignment = PP_ALIGN.LEFT
+            
+            # Check if this is the "Glory to the Father" verse (no speaker label needed)
+            if "Glory to the Father" in verse['text'] or "Glory to the father" in verse['text']:
+                # Glory be verse: just black text, no speaker label
+                glory_run = content_para.add_run()
+                glory_run.text = verse['text']
+                glory_run.font.size = Pt(44)
+                glory_run.font.name = "Georgia"
+                glory_run.font.bold = True
+                glory_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                print(f"Created slide {slide_count}: Canticle - Glory Be")
+                
+            elif verse['speaker'] == "Priest":
+                # Priest slides: "Priest: " + text, all in red
+                priest_run = content_para.add_run()
+                priest_run.text = f"Priest: {verse['text']}"
+                priest_run.font.size = Pt(44)
+                priest_run.font.name = "Georgia"
+                priest_run.font.bold = True
+                priest_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+                print(f"Created slide {slide_count}: Canticle - {verse['speaker']}")
+                
+            elif verse['speaker'] == "People":
+                # People slides: "People: " in blue, rest of text in black
+                people_label = content_para.add_run()
+                people_label.text = "People: "
+                people_label.font.size = Pt(44)
+                people_label.font.name = "Georgia"
+                people_label.font.bold = True
+                people_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+                
+                people_text = content_para.add_run()
+                people_text.text = verse['text']
+                people_text.font.size = Pt(44)
+                people_text.font.name = "Georgia"
+                people_text.font.bold = True
+                people_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                print(f"Created slide {slide_count}: Canticle - {verse['speaker']}")
+        
+        # Add Glory Be after canticle (unless explicitly omitted)
+        if not omit_glory_be:
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Create text box for Glory Be
+            glory_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+            glory_frame = glory_box.text_frame
+            glory_frame.word_wrap = True
+            glory_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            glory_para = glory_frame.paragraphs[0]
+            glory_para.alignment = PP_ALIGN.LEFT
+            
+            # Glory Be text in black, no speaker label
+            glory_run = glory_para.add_run()
+            glory_run.text = "Glory to the Father, and to the Son, and to the Holy Spirit: as it was in the beginning, is now, and will be for ever. Amen."
+            glory_run.font.size = Pt(44)
+            glory_run.font.name = "Georgia"
+            glory_run.font.bold = True
+            glory_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+            
+            print(f"Created slide {slide_count}: Canticle - Glory Be")
+        else:
+            print(f"  Skipping Glory Be slide (explicitly omitted for this canticle)")
+        
+        # Repeat Antiphon 2 after Canticle verses (and Glory Be if present)
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        antiphon_2 = liturgical_data['morning_prayer']['psalmody']['antiphon_2']
+        
+        # Create text box for the repeated antiphon with auto-fit
+        ant2_repeat_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+        ant2_repeat_frame = ant2_repeat_box.text_frame
+        ant2_repeat_frame.word_wrap = True
+        ant2_repeat_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        ant2_repeat_para = ant2_repeat_frame.paragraphs[0]
+        ant2_repeat_para.alignment = PP_ALIGN.CENTER
+        
+        # Add "(All) Ant. 2 " in blue
+        ant2_repeat_label = ant2_repeat_para.add_run()
+        ant2_repeat_label.text = "(All) Ant. 2 "
+        ant2_repeat_label.font.size = Pt(44)
+        ant2_repeat_label.font.name = "Georgia"
+        ant2_repeat_label.font.bold = True
+        ant2_repeat_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+        
+        # Add the antiphon text in black
+        ant2_repeat_text = ant2_repeat_para.add_run()
+        ant2_repeat_text.text = antiphon_2['text']
+        ant2_repeat_text.font.size = Pt(44)
+        ant2_repeat_text.font.name = "Georgia"
+        ant2_repeat_text.font.bold = True
+        ant2_repeat_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        print(f"Created slide {slide_count}: Repeated Antiphon 2")
+        
+        # TODO: Continue with Antiphon 3, Psalm 2, and remaining psalmody structure
         
         return slide_count
 
