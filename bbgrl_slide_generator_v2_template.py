@@ -379,7 +379,8 @@ class BBGRLSlideGeneratorV2:
                 "psalmody": {
                     "antiphon_1": self._extract_antiphon_and_psalm_info(soup, 1, text_after_psalmody),
                     "psalm_1": self._extract_psalm_verses_from_html(soup, 1),
-                    "antiphon_2": self._extract_antiphon(text_after_psalmody, 2), 
+                    "antiphon_2": self._extract_antiphon(text_after_psalmody, 2),
+                    "canticle_info": self._extract_canticle_info(soup, text_after_psalmody),
                     "canticle": self._extract_canticle_verses(text_after_psalmody),
                     "antiphon_3": self._extract_antiphon(text_after_psalmody, 3),
                     "psalm_2": self._extract_psalm_verses_from_html(soup, 2)
@@ -866,6 +867,94 @@ class BBGRLSlideGeneratorV2:
         ]
         
         return fallback_verses
+
+    def _extract_canticle_info(self, soup, text):
+        """Extract canticle title and subtitle (red text)
+        
+        Looks for the rubrica span containing "Canticle:" and extracts the full red text
+        Examples: 
+        - "Canticle: Isaiah 42:10-16God, victor and savior"
+        - "Canticle: Daniel 3:57-88, 56Let all creatures praise the Lord"
+        - "Canticle: Isaiah 61:10—62:5The prophet's joy in the vision of a new Jerusalem"
+        Should be split into title and subtitle
+        """
+        try:
+            # Find the rubrica span with "Canticle:" in the HTML
+            # Note: We need to find the FIRST Canticle span that has verse references
+            # (not "Canticle of Zechariah" which is the Gospel Canticle)
+            for span in soup.find_all('span', class_='rubrica'):
+                span_text = span.get_text().strip()
+                
+                # Check if this is a Canticle with verse references (contains numbers and colon)
+                # Examples: "Daniel 3:57", "Isaiah 42:10-16", "Isaiah 61:10—62:5"
+                if span_text.startswith('Canticle:') and re.search(r'\d+:\d+', span_text):
+                    # Extract the full text
+                    # Format: "Canticle: [Book] [chapter]:[verses][Subtitle]"
+                    # The subtitle starts with a capital letter after the verse numbers
+                    
+                    # Pattern to match:
+                    # - "Canticle: " followed by book name (letters and spaces)
+                    # - Chapter:verse or Chapter:verse-verse or Chapter:verse—verse or Chapter:verse—chapter:verse
+                    # - Optional comma and additional verse numbers
+                    # - Remaining text is the subtitle
+                    
+                    # More flexible pattern that handles:
+                    # - "Isaiah 42:10-16" (hyphen within same chapter)
+                    # - "Isaiah 61:10—62:5" (em dash spanning chapters)
+                    # - "Daniel 3:57-88, 56" (comma for additional verse)
+                    match = re.match(
+                        r'(Canticle:\s+[A-Za-z\s]+\d+:\d+(?:[-—]\d+(?::\d+)?)?(?:,\s*\d+)?)(.*)', 
+                        span_text, 
+                        re.IGNORECASE
+                    )
+                    
+                    if match:
+                        title = match.group(1).strip()  # "Canticle: Isaiah 42:10-16"
+                        subtitle = match.group(2).strip()  # "God, victor and savior"
+                        
+                        # Clean up subtitle: remove leading punctuation like em dash
+                        subtitle = re.sub(r'^[—\-\s]+', '', subtitle)
+                        
+                        print(f"  Found Canticle title: {title}")
+                        if subtitle:
+                            print(f"  Found Canticle subtitle: {subtitle}")
+                        
+                        return {
+                            "title": title,
+                            "subtitle": subtitle
+                        }
+                    else:
+                        # Fallback: try to split at the last digit followed by a capital letter
+                        # Find position where verse numbers end (last digit) and subtitle begins
+                        verse_end = re.search(r'\d+([A-Z])', span_text)
+                        if verse_end:
+                            split_pos = verse_end.start(1)
+                            title = span_text[:split_pos].strip()
+                            subtitle = span_text[split_pos:].strip()
+                            
+                            print(f"  Found Canticle title: {title}")
+                            if subtitle:
+                                print(f"  Found Canticle subtitle: {subtitle}")
+                            
+                            return {
+                                "title": title,
+                                "subtitle": subtitle
+                            }
+                        else:
+                            # Use the whole text as title
+                            print(f"  Found Canticle (no subtitle split): {span_text}")
+                            return {
+                                "title": span_text,
+                                "subtitle": ""
+                            }
+        except Exception as e:
+            print(f"  ⚠ Error extracting canticle info: {e}")
+        
+        # Fallback
+        return {
+            "title": "[Canticle title]",
+            "subtitle": ""
+        }
 
     def _extract_short_reading(self, text):
         """Extract short reading text"""
@@ -1355,6 +1444,43 @@ class BBGRLSlideGeneratorV2:
         ant2_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
         
         print(f"Created slide {slide_count}: Antiphon 2")
+        
+        # Add Canticle info slide (red text)
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        canticle_info = liturgical_data['morning_prayer']['psalmody']['canticle_info']
+        
+        # Create text box for Canticle info with auto-fit
+        canticle_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(12.33), Inches(3))
+        canticle_frame = canticle_box.text_frame
+        canticle_frame.word_wrap = True
+        canticle_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        # Add canticle title in red
+        canticle_para = canticle_frame.paragraphs[0]
+        canticle_para.alignment = PP_ALIGN.LEFT
+        
+        canticle_title_run = canticle_para.add_run()
+        canticle_title_run.text = canticle_info['title']
+        canticle_title_run.font.size = Pt(44)
+        canticle_title_run.font.name = "Georgia"
+        canticle_title_run.font.bold = True
+        canticle_title_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+        
+        # Add canticle subtitle in red on next line if present
+        if canticle_info['subtitle']:
+            canticle_subtitle_para = canticle_frame.add_paragraph()
+            canticle_subtitle_para.alignment = PP_ALIGN.LEFT
+            
+            canticle_subtitle_run = canticle_subtitle_para.add_run()
+            canticle_subtitle_run.text = canticle_info['subtitle']
+            canticle_subtitle_run.font.size = Pt(44)
+            canticle_subtitle_run.font.name = "Georgia"
+            canticle_subtitle_run.font.bold = True
+            canticle_subtitle_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+        
+        print(f"Created slide {slide_count}: Canticle info")
         
         # Continue with all psalmody elements following the same pattern...
         # (This would continue with all the psalmody structure)
