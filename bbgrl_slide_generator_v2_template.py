@@ -45,7 +45,7 @@ class BBGRLSlideGeneratorV2:
         return {
             "metadata": {
                 "total_expected_slides": 135,  # Target slide count
-                "title_pattern": "{date} Morning Readings & Prayers",
+                "title_pattern": "{date} Morning Readings & Prayers", # TODO: might not need
                 "structure_sections": [
                     "opening_slides",
                     "psalmody_section", 
@@ -62,7 +62,7 @@ class BBGRLSlideGeneratorV2:
             },
             
             # Template structure - defines how to organize any liturgical data
-            "section_templates": {
+            "section_templates": { # TODO: double check these section templates are correct
                 "opening_slides": {
                     "slide_count": 2,
                     "slides": [
@@ -378,11 +378,11 @@ class BBGRLSlideGeneratorV2:
             structured = {
                 "psalmody": {
                     "antiphon_1": self._extract_antiphon_and_psalm_info(soup, 1, text_after_psalmody),
-                    "psalm_1": self._extract_psalm_verses(text_after_psalmody, 1),
+                    "psalm_1": self._extract_psalm_verses_from_html(soup, 1),
                     "antiphon_2": self._extract_antiphon(text_after_psalmody, 2), 
                     "canticle": self._extract_canticle_verses(text_after_psalmody),
                     "antiphon_3": self._extract_antiphon(text_after_psalmody, 3),
-                    "psalm_2": self._extract_psalm_verses(text_after_psalmody, 2)
+                    "psalm_2": self._extract_psalm_verses_from_html(soup, 2)
                 },
                 "reading": {
                     "short_reading": self._extract_short_reading(text_after_psalmody),
@@ -616,24 +616,244 @@ class BBGRLSlideGeneratorV2:
             "format": "all_response"
         }
 
-    def _extract_psalm_verses(self, text, psalm_number):
-        """Extract psalm verses and alternate between priest/people following reference pattern"""
-        # This would extract and structure psalm verses to match the reference alternating pattern
-        # For now, return structured format that matches reference
+    def _extract_psalm_verses_from_html(self, soup, psalm_number):
+        """Extract psalm verses directly from HTML structure
         
+        Looks for the rubrica span with 'Ant. X', then extracts the psalm verses
+        which are plain text separated by <br><br> tags, stopping at "Psalm Prayer"
+        """
         verses = []
-        # Extract psalm content and structure it like the reference
-        # Each verse alternates between priest and people
         
-        # Fallback structured verses matching reference pattern
-        fallback_verses = [
+        try:
+            # Find the antiphon marker for this psalm number in the HTML
+            ant_pattern = rf'Ant\.\s*{psalm_number}\s*$'  # Match "Ant. X" at end of string
+            ant_span = None
+            
+            # Find all rubrica spans
+            for span in soup.find_all('span', class_='rubrica'):
+                if re.match(ant_pattern, span.get_text().strip()):
+                    ant_span = span
+                    break
+            
+            if not ant_span:
+                print(f"  ⚠ Could not find Ant. {psalm_number} in HTML")
+                return self._get_fallback_verses(psalm_number)
+            
+            # Find the parent element and get its HTML
+            parent = ant_span.parent
+            parent_html = str(parent)
+            
+            # Find the position of this antiphon in the HTML
+            ant_pos = parent_html.find(str(ant_span))
+            if ant_pos < 0:
+                return self._get_fallback_verses(psalm_number)
+            
+            # Get HTML after the antiphon
+            html_after_ant = parent_html[ant_pos + len(str(ant_span)):]
+            
+            # Find where to stop: "Psalm Prayer" or next "Ant. X"
+            stop_patterns = [
+                r'<span class="rubrica">Psalm\s+Prayer</span>',
+                rf'<span class="rubrica">Ant\.\s*{psalm_number + 1}</span>',
+                r'<span class="rubrica">Ant\.</span>',  # Repeated antiphon
+            ]
+            
+            end_pos = len(html_after_ant)
+            for pattern in stop_patterns:
+                match = re.search(pattern, html_after_ant, re.IGNORECASE)
+                if match:
+                    end_pos = min(end_pos, match.start())
+            
+            # Extract the psalm section HTML
+            psalm_html = html_after_ant[:end_pos]
+            
+            # Parse to get the text, skipping the intro em tag and rubrica (red) text
+            psalm_soup = BeautifulSoup(psalm_html, 'html.parser')
+            
+            # Remove the psalm title rubrica and intro em tag
+            for rubrica in psalm_soup.find_all('span', class_='rubrica', string=re.compile(r'Psalm\s+\d')):
+                rubrica.decompose()
+            for em in psalm_soup.find_all('em'):
+                em.decompose()
+            
+            # Get the remaining HTML and split by <br><br> to get verses/stanzas
+            remaining_html = str(psalm_soup)
+            
+            # Split by double br tags
+            verse_sections = re.split(r'<br\s*/?>\s*<br\s*/?>', remaining_html)
+            
+            verse_count = 0
+            skipped_first_section = False  # Track if we've skipped the antiphon
+            
+            for section in verse_sections:
+                # Parse this section to get clean text
+                section_soup = BeautifulSoup(section, 'html.parser')
+                
+                # Remove asterisks and daggers (rubrica spans)
+                for rubrica in section_soup.find_all('span', class_='rubrica'):
+                    rubrica.decompose()
+                
+                # Get text
+                verse_text = section_soup.get_text().strip()
+                
+                # Skip empty or short verses
+                if not verse_text or len(verse_text) < 20:
+                    continue
+                
+                # Skip the first valid section if it looks like the antiphon text
+                # The antiphon typically appears as the very first text section after "Ant. X"
+                # Only skip the FIRST occurrence to avoid false positives with verses that have similar text
+                if not skipped_first_section and verse_count == 0:
+                    if re.search(r'(Each morning|Martin, priest|My heart is ready)', verse_text, re.IGNORECASE):
+                        print(f"  Skipping antiphon text in verse extraction: {verse_text[:50]}...")
+                        skipped_first_section = True
+                        continue
+                
+                # Clean up: normalize whitespace
+                verse_text = re.sub(r'\s+', ' ', verse_text).strip()
+                
+                # Add period if needed
+                if not verse_text[-1] in '.!?"':
+                    verse_text += '.'
+                
+                # Alternate speaker
+                speaker = "Priest" if verse_count % 2 == 0 else "People"
+                
+                verses.append({
+                    "speaker": speaker,
+                    "text": verse_text
+                })
+                verse_count += 1
+            
+            if verses:
+                print(f"  Extracted {len(verses)} verses for Psalm {psalm_number}")
+                return verses
+                
+        except Exception as e:
+            print(f"  ⚠ Error parsing psalm verses from HTML: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return self._get_fallback_verses(psalm_number)
+
+    def _extract_psalm_verses(self, text, psalm_number):
+        """Extract psalm verses - ONLY the verse paragraphs after the red psalm text
+        
+        Parsing logic (ignoring all the red text/antiphons):
+        1. Start right after the intro sentence that ends with parentheses and period like "(Arnobius)."
+        2. Skip any single line that sits between 2 empty lines
+        3. Grab each proceeding paragraph as a verse
+        4. Stop at "Glory to the Father" or "Psalm Prayer"
+        5. Alternate speakers: Priest, People, Priest, People (always start with Priest)
+        """
+        verses = []
+        
+        try:
+            # Find the intro sentence that marks the end of red text
+            # It typically ends with a closing parenthesis followed by period: ).
+            # Examples: "(Arnobius).", "(St. Augustine).", etc.
+            intro_patterns = [
+                r'\([^)]{3,50}\)\s*\.',  # Text in parentheses ending with period
+                r'Psalm\s+\d+[A-Z]?(?::\d+(?:-\d+)?)?\s*[^\n]{10,100}\n'  # Or just after subtitle
+            ]
+            
+            # Find all occurrences of these patterns
+            intro_matches = []
+            for pattern in intro_patterns:
+                intro_matches.extend(list(re.finditer(pattern, text, re.IGNORECASE)))
+            
+            # Sort by position
+            intro_matches.sort(key=lambda m: m.start())
+            
+            # Get the match that corresponds to this psalm number
+            if psalm_number <= len(intro_matches):
+                match = intro_matches[psalm_number - 1]
+                start_pos = match.end()
+            else:
+                # Fallback: find "Psalm X" and skip ahead
+                psalm_pattern = rf'Psalm\s+\d+[A-Z]?(?::\d+(?:-\d+)?)?'
+                psalm_matches = list(re.finditer(psalm_pattern, text, re.IGNORECASE))
+                if psalm_number <= len(psalm_matches):
+                    # Skip 300 characters after psalm title to get past red text
+                    start_pos = psalm_matches[psalm_number - 1].end() + 300
+                else:
+                    return self._get_fallback_verses(psalm_number)
+            
+            # Find the end: "Glory to the Father"
+            glory_pattern = r'Glory\s+to\s+the\s+Father'
+            glory_match = re.search(glory_pattern, text[start_pos:], re.IGNORECASE)
+            
+            if glory_match:
+                end_pos = start_pos + glory_match.start()
+            else:
+                # Try "Psalm Prayer"
+                psalm_prayer_match = re.search(r'Psalm\s+Prayer', text[start_pos:], re.IGNORECASE)
+                if psalm_prayer_match:
+                    end_pos = start_pos + psalm_prayer_match.start()
+                else:
+                    # Take next 2000 characters
+                    end_pos = start_pos + 2000
+            
+            # Extract verse section
+            verse_section = text[start_pos:end_pos].strip()
+            
+            # Split into paragraphs by looking for sentence endings or double newlines
+            # Each paragraph is typically separated by period-newline or double newlines
+            paragraphs = re.split(r'(?:\.\s*\n)|(?:\n\s*\n)', verse_section)
+            
+            # Process each paragraph
+            verse_count = 0
+            for para in paragraphs:
+                para = para.strip()
+                
+                # Skip empty or very short
+                if not para or len(para) < 20:
+                    continue
+                
+                # Skip if it looks like a marker
+                if re.match(r'^(Psalm|Ant\.|Glory|℟)', para, re.IGNORECASE):
+                    continue
+                
+                # Clean up: replace asterisks and multiple spaces
+                cleaned = re.sub(r'\s*\*\s*', ' ', para)
+                cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+                
+                # Make sure it ends with proper punctuation
+                if cleaned and not cleaned[-1] in '.!?"':
+                    cleaned += '.'
+                
+                if len(cleaned) < 20:
+                    continue
+                
+                # Alternate speaker
+                speaker = "Priest" if verse_count % 2 == 0 else "People"
+                
+                verses.append({
+                    "speaker": speaker,
+                    "text": cleaned
+                })
+                verse_count += 1
+            
+            if verses:
+                print(f"  Extracted {len(verses)} verses for Psalm {psalm_number}")
+                return verses
+                
+        except Exception as e:
+            print(f"  ⚠ Error parsing psalm verses: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return self._get_fallback_verses(psalm_number)
+    
+    def _get_fallback_verses(self, psalm_number):
+        """Return fallback verses when parsing fails"""
+        print(f"  Using fallback verses for Psalm {psalm_number}")
+        return [
             {"speaker": "Priest", "text": f"[Psalm {psalm_number} verse 1 - Priest]"},
             {"speaker": "People", "text": f"[Psalm {psalm_number} verse 2 - People]"},
             {"speaker": "Priest", "text": f"[Psalm {psalm_number} verse 3 - Priest]"},
             {"speaker": "People", "text": f"[Psalm {psalm_number} verse 4 - People]"}
         ]
-        
-        return fallback_verses
 
     def _extract_canticle_verses(self, text):
         """Extract canticle verses with priest/people alternation"""
@@ -1010,58 +1230,65 @@ class BBGRLSlideGeneratorV2:
         
         print(f"Created slide {slide_count}: PSALMODY title slide")
         
-        # Blank transition slide
-        slide_count += 1
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        print(f"Created slide {slide_count}: Transition slide")
-        
         return slide_count
 
     def _create_psalmody_section(self, prs, liturgical_data, slide_count):
         """Create psalmody section following reference template exactly"""
-        # Title slide
-        slide_count += 1
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        title_box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(11.33), Inches(1.5))
-        title_frame = title_box.text_frame
-        title_frame.text = "PSALMODY"
-        title_para = title_frame.paragraphs[0]
-        title_para.font.size = self.reference_template['formatting_rules']['font_sizes']['title']
-        title_para.font.bold = True
-        title_para.font.color.rgb = self.reference_template['formatting_rules']['title_color']
-        title_para.alignment = PP_ALIGN.CENTER
-        
-        # Add subtitle content
-        content_box = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(11.33), Inches(3))
-        content_frame = content_box.text_frame
-        antiphon_1 = liturgical_data['morning_prayer']['psalmody']['antiphon_1']
-        content_frame.text = f"(All) Ant. 1 {antiphon_1['text']}\nPsalm 90\nMay we live in the radiance of God"
-        content_para = content_frame.paragraphs[0]
-        content_para.font.size = Pt(28)
-        content_para.alignment = PP_ALIGN.CENTER
-        print(f"Created slide {slide_count}: Psalmody title")
-        
         # Create psalm verses alternating priest/people (following reference pattern)
         psalm_1_verses = liturgical_data['morning_prayer']['psalmody']['psalm_1']
         for verse in psalm_1_verses:
             slide_count += 1
             slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Create text box for the verse content with auto-fit
             content_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
             content_frame = content_box.text_frame
             content_frame.word_wrap = True
-            content_frame.text = f"{verse['speaker']}: {verse['text']}"
             
+            # Enable auto-fit to make text as large as possible without crossing boundaries
+            content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            # Create paragraph
             content_para = content_frame.paragraphs[0]
-            if verse['speaker'] == "Priest":
-                content_para.font.color.rgb = self.reference_template['formatting_rules']['priest_color']
-                content_para.font.size = self.reference_template['formatting_rules']['font_sizes']['priest_text']
-            elif verse['speaker'] == "People":
-                content_para.font.color.rgb = self.reference_template['formatting_rules']['people_color']
-                content_para.font.size = self.reference_template['formatting_rules']['font_sizes']['people_text']
+            content_para.alignment = PP_ALIGN.LEFT
             
-            content_para.font.bold = True
-            content_para.alignment = PP_ALIGN.CENTER
-            print(f"Created slide {slide_count}: Psalm 1 - {verse['speaker']}")
+            # Check if this is the "Glory to the Father" verse (no speaker label needed)
+            if "Glory to the Father" in verse['text'] or "Glory to the father" in verse['text']:
+                # Glory be verse: just black text, no speaker label
+                glory_run = content_para.add_run()
+                glory_run.text = verse['text']
+                glory_run.font.size = Pt(44)
+                glory_run.font.name = "Georgia"
+                glory_run.font.bold = True
+                glory_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                print(f"Created slide {slide_count}: Psalm 1 - Glory Be")
+                
+            elif verse['speaker'] == "Priest":
+                # Priest slides: "Priest: " + text, all in red
+                priest_run = content_para.add_run()
+                priest_run.text = f"Priest: {verse['text']}"
+                priest_run.font.size = Pt(44)
+                priest_run.font.name = "Georgia"
+                priest_run.font.bold = True
+                priest_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+                print(f"Created slide {slide_count}: Psalm 1 - {verse['speaker']}")
+                
+            elif verse['speaker'] == "People":
+                # People slides: "People: " in blue, rest of text in black
+                people_label = content_para.add_run()
+                people_label.text = "People: "
+                people_label.font.size = Pt(44)
+                people_label.font.name = "Georgia"
+                people_label.font.bold = True
+                people_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+                
+                people_text = content_para.add_run()
+                people_text.text = verse['text']
+                people_text.font.size = Pt(44)
+                people_text.font.name = "Georgia"
+                people_text.font.bold = True
+                people_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                print(f"Created slide {slide_count}: Psalm 1 - {verse['speaker']}")
         
         # Continue with all psalmody elements following the same pattern...
         # (This would continue with all the psalmody structure)
