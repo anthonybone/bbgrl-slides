@@ -596,10 +596,10 @@ class BBGRLSlideGeneratorV2:
 
     def _extract_antiphon(self, text, number):
         """Extract antiphon text and structure it with priest/people alternation"""
-        # Pattern to find antiphons
+        # Pattern to find antiphons - match up to any sentence-ending punctuation (. ! ?)
         patterns = [
-            rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
-            rf'Antiphon\s*{number}[:\s]+([^.]+\.)'
+            rf'Ant\.\s*{number}[:\s]+([^.!?]+[.!?])',
+            rf'Antiphon\s*{number}[:\s]+([^.!?]+[.!?])'
         ]
         
         for pattern in patterns:
@@ -1322,6 +1322,39 @@ class BBGRLSlideGeneratorV2:
         ant_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
         
         print(f"Created slide {slide_count}: Repeated Antiphon 1")
+        
+        # Add Antiphon 2 slide
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        antiphon_2 = liturgical_data['morning_prayer']['psalmody']['antiphon_2']
+        
+        # Create text box for Antiphon 2 with auto-fit
+        ant2_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+        ant2_frame = ant2_box.text_frame
+        ant2_frame.word_wrap = True
+        ant2_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        ant2_para = ant2_frame.paragraphs[0]
+        ant2_para.alignment = PP_ALIGN.CENTER
+        
+        # Add "Ant. 2 " in blue
+        ant2_label = ant2_para.add_run()
+        ant2_label.text = "Ant. 2 "
+        ant2_label.font.size = Pt(44)
+        ant2_label.font.name = "Georgia"
+        ant2_label.font.bold = True
+        ant2_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+        
+        # Add the antiphon 2 text in black
+        ant2_text = ant2_para.add_run()
+        ant2_text.text = antiphon_2['text']
+        ant2_text.font.size = Pt(44)
+        ant2_text.font.name = "Georgia"
+        ant2_text.font.bold = True
+        ant2_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        print(f"Created slide {slide_count}: Antiphon 2")
         
         # Continue with all psalmody elements following the same pattern...
         # (This would continue with all the psalmody structure)
