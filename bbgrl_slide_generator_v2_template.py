@@ -1290,6 +1290,39 @@ class BBGRLSlideGeneratorV2:
                 people_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
                 print(f"Created slide {slide_count}: Psalm 1 - {verse['speaker']}")
         
+        # Repeat Antiphon 1 after Psalm 1 verses
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        antiphon_1 = liturgical_data['morning_prayer']['psalmody']['antiphon_1']
+        
+        # Create text box for the repeated antiphon with auto-fit
+        ant_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+        ant_frame = ant_box.text_frame
+        ant_frame.word_wrap = True
+        ant_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        ant_para = ant_frame.paragraphs[0]
+        ant_para.alignment = PP_ALIGN.CENTER
+        
+        # Add "(All) Ant. 1 " in blue
+        ant_label = ant_para.add_run()
+        ant_label.text = "(All) Ant. 1 "
+        ant_label.font.size = Pt(44)
+        ant_label.font.name = "Georgia"
+        ant_label.font.bold = True
+        ant_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+        
+        # Add the antiphon text in black
+        ant_text = ant_para.add_run()
+        ant_text.text = antiphon_1['text']
+        ant_text.font.size = Pt(44)
+        ant_text.font.name = "Georgia"
+        ant_text.font.bold = True
+        ant_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        print(f"Created slide {slide_count}: Repeated Antiphon 1")
+        
         # Continue with all psalmody elements following the same pattern...
         # (This would continue with all the psalmody structure)
         
