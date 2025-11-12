@@ -355,28 +355,46 @@ class BBGRLSlideGeneratorV2:
             soup = BeautifulSoup(html_content, 'html.parser')
             full_text = soup.get_text()
             
+            # Find "PSALMODY" in all caps and extract only the text AFTER it
+            # This skips the "Tune:" and "Text:" segments that come before PSALMODY
+            psalmody_pos = full_text.upper().find('PSALMODY')
+            
+            if psalmody_pos >= 0:
+                # Extract only the text after PSALMODY for all parsing
+                text_after_psalmody = full_text[psalmody_pos:]
+                print(f"  Found PSALMODY at position {psalmody_pos}, parsing content after it")
+                
+                # Create a new soup object with only the content after PSALMODY
+                # Find the element containing PSALMODY and get everything after it
+                psalmody_soup = soup
+            else:
+                # Fallback: use full text if PSALMODY not found
+                text_after_psalmody = full_text
+                psalmody_soup = soup
+                print(f"  ⚠ PSALMODY marker not found, using full text")
+            
             # Extract and structure the content to match reference format
-            # Pass soup object to antiphon_1 extraction for better HTML parsing
+            # Pass soup object and text_after_psalmody for parsing
             structured = {
                 "psalmody": {
-                    "antiphon_1": self._extract_antiphon_and_psalm_info(soup, 1),
-                    "psalm_1": self._extract_psalm_verses(full_text, 1),
-                    "antiphon_2": self._extract_antiphon(full_text, 2), 
-                    "canticle": self._extract_canticle_verses(full_text),
-                    "antiphon_3": self._extract_antiphon(full_text, 3),
-                    "psalm_2": self._extract_psalm_verses(full_text, 2)
+                    "antiphon_1": self._extract_antiphon_and_psalm_info(soup, 1, text_after_psalmody),
+                    "psalm_1": self._extract_psalm_verses(text_after_psalmody, 1),
+                    "antiphon_2": self._extract_antiphon(text_after_psalmody, 2), 
+                    "canticle": self._extract_canticle_verses(text_after_psalmody),
+                    "antiphon_3": self._extract_antiphon(text_after_psalmody, 3),
+                    "psalm_2": self._extract_psalm_verses(text_after_psalmody, 2)
                 },
                 "reading": {
-                    "short_reading": self._extract_short_reading(full_text),
-                    "responsory": self._extract_responsory(full_text)
+                    "short_reading": self._extract_short_reading(text_after_psalmody),
+                    "responsory": self._extract_responsory(text_after_psalmody)
                 },
                 "gospel_canticle": {
-                    "antiphon": self._extract_gospel_antiphon(full_text),
-                    "benedictus_verses": self._extract_benedictus_verses(full_text)
+                    "antiphon": self._extract_gospel_antiphon(text_after_psalmody),
+                    "benedictus_verses": self._extract_benedictus_verses(text_after_psalmody)
                 },
                 "intercessions": {
-                    "intercessions": self._extract_intercessions(full_text),
-                    "concluding_prayer": self._extract_concluding_prayer(full_text)
+                    "intercessions": self._extract_intercessions(text_after_psalmody),
+                    "concluding_prayer": self._extract_concluding_prayer(text_after_psalmody)
                 }
             }
             
@@ -424,70 +442,95 @@ class BBGRLSlideGeneratorV2:
             print(f"Error parsing daily readings: {e}")
             return self._get_fallback_readings()
 
-    def _extract_antiphon_and_psalm_info(self, text, number):
+    def _extract_antiphon_and_psalm_info(self, text, number, text_after_psalmody=None):
         """Extract antiphon text and associated psalm information
         
         Note: 'text' parameter should be the BeautifulSoup object, not plain text,
         when called from _fetch_morning_prayer_structured
+        
+        For Antiphon 1: Uses text_after_psalmody (which starts at PSALMODY heading)
+        to extract the antiphon and psalm info, skipping everything before PSALMODY
         """
         # If text is a BeautifulSoup object, extract from HTML structure
         if hasattr(text, 'find_all'):
             soup = text
-            text_content = soup.get_text()
+            text_content = text_after_psalmody if text_after_psalmody else soup.get_text()
             
             # Extract antiphon text from plain text
             antiphon_text = ""
-            if number == 1:
-                antiphon_patterns = [
-                    r'Ant\.\s+([^.]+\.)',  # Match "Ant. " followed by text until first period
-                    rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
-                    rf'Antiphon\s*{number}[:\s]+([^.]+\.)',
-                    r'Antiphon[:\s]+([^.]+\.)'
-                ]
-            else:
-                antiphon_patterns = [
-                    rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
-                    rf'Antiphon\s*{number}[:\s]+([^.]+\.)'
-                ]
-            
-            for pattern in antiphon_patterns:
-                match = re.search(pattern, text_content, re.IGNORECASE)
-                if match:
-                    antiphon_text = match.group(1).strip()
-                    break
-            
-            # Extract psalm info from HTML structure for first antiphon
             psalm_title = ""
             psalm_subtitle = ""
             
             if number == 1:
-                # Look for the first <span class="rubrica"> that contains "Psalm" after the antiphon
-                # The rubrica class contains the red psalm titles and subtitles
-                rubrica_spans = soup.find_all('span', class_='rubrica')
+                # Parse directly from text_after_psalmody (already starts after PSALMODY)
+                # Skip the Invitatory section - look for "Ant. 1" specifically (with number)
+                # This will find the actual first antiphon of the Psalmody, not the Invitatory
+                antiphon_patterns = [
+                    r'Ant\.\s*1[:\s]+([^.]+\.)',  # Match "Ant. 1" with number
+                    r'Antiphon\s*1[:\s]+([^.]+\.)',
+                    r'Ant\.\s*1\s+([^.]+\.)',  # Alternate format
+                ]
                 
-                for span in rubrica_spans:
-                    span_text = span.get_text(strip=True)
-                    # Look for pattern like "Psalm 95A call to praise God"
-                    psalm_match = re.match(r'Psalm\s+(\d+)(?::(\d+)(?:-(\d+))?)?(.+)?', span_text)
-                    if psalm_match:
-                        psalm_num = psalm_match.group(1)
-                        verse_start = psalm_match.group(2)
-                        verse_end = psalm_match.group(3)
-                        subtitle = psalm_match.group(4)
-                        
-                        # Build psalm title
-                        if verse_start and verse_end:
-                            psalm_title = f"Psalm {psalm_num}:{verse_start}-{verse_end}"
-                        elif verse_start:
-                            psalm_title = f"Psalm {psalm_num}:{verse_start}"
-                        else:
-                            psalm_title = f"Psalm {psalm_num}"
-                        
-                        # Extract subtitle if present
-                        if subtitle:
-                            psalm_subtitle = subtitle.strip()
-                        
-                        # We found the first psalm, break
+                for pattern in antiphon_patterns:
+                    match = re.search(pattern, text_content, re.IGNORECASE)
+                    if match:
+                        antiphon_text = match.group(1).strip()
+                        print(f"  Found Antiphon 1 text: {antiphon_text[:50]}...")
+                        break
+                
+                # Extract psalm info from the section after PSALMODY
+                # Look for the FIRST psalm pattern in text after PSALMODY and after the antiphon
+                # Pattern to match: Psalm 95, Psalm 95:1-5, Psalm 95A, etc.
+                # Capture up to a newline or another "Psalm" keyword
+                psalm_pattern = r'Psalm\s+(\d+)([A-Z])?(?::(\d+)(?:-(\d+))?)?\s*([^\n]*?)(?=\nPsalm|\n\n|Psalm\s+\d|$)'
+                psalm_matches = re.finditer(psalm_pattern, text_content, re.IGNORECASE)
+                
+                # Get the first psalm match
+                first_psalm_match = None
+                for match in psalm_matches:
+                    first_psalm_match = match
+                    break
+                
+                if first_psalm_match:
+                    psalm_num = first_psalm_match.group(1)
+                    psalm_letter = first_psalm_match.group(2) if first_psalm_match.group(2) else ""
+                    verse_start = first_psalm_match.group(3)
+                    verse_end = first_psalm_match.group(4)
+                    subtitle_raw = first_psalm_match.group(5)
+                    
+                    # Build psalm title
+                    if verse_start and verse_end:
+                        psalm_title = f"Psalm {psalm_num}{psalm_letter}:{verse_start}-{verse_end}"
+                    elif verse_start:
+                        psalm_title = f"Psalm {psalm_num}{psalm_letter}:{verse_start}"
+                    else:
+                        psalm_title = f"Psalm {psalm_num}{psalm_letter}"
+                    
+                    # Extract subtitle if present
+                    if subtitle_raw:
+                        # Clean up subtitle - remove extra whitespace
+                        subtitle = subtitle_raw.strip()
+                        # Remove any text that looks like it's the start of another psalm reference
+                        subtitle = re.sub(r'Psalm\s+\d.*$', '', subtitle, flags=re.IGNORECASE).strip()
+                        # If subtitle contains "salm" (partial word), remove it
+                        subtitle = re.sub(r'\bP?salm\b.*$', '', subtitle, flags=re.IGNORECASE).strip()
+                        # Limit length
+                        if len(subtitle) > 100:
+                            subtitle = subtitle[:100].rsplit(' ', 1)[0] + '...'
+                        psalm_subtitle = subtitle
+                    
+                    print(f"  Found psalm: {psalm_title} - {psalm_subtitle}")
+            else:
+                # For antiphons 2 and 3, use the original logic
+                antiphon_patterns = [
+                    rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
+                    rf'Antiphon\s*{number}[:\s]+([^.]+\.)'
+                ]
+                
+                for pattern in antiphon_patterns:
+                    match = re.search(pattern, text_content, re.IGNORECASE)
+                    if match:
+                        antiphon_text = match.group(1).strip()
                         break
             
             return {
