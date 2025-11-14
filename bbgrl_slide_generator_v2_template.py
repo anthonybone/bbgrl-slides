@@ -245,11 +245,11 @@ class BBGRLSlideGeneratorV2:
                     more_link.click()
                     time.sleep(2)
                 else:
-                    print(f"  ⚠ Could not find 'More' link")
+                    print(f"  WARNING: Could not find 'More' link")
                     return None
                     
             except Exception as e:
-                print(f"  ⚠ Error clicking 'More' link: {e}")
+                print(f"  WARNING: Error clicking 'More' link: {e}")
                 return None
             
             # Step 2: Update date input boxes
@@ -284,7 +284,7 @@ class BBGRLSlideGeneratorV2:
                 time.sleep(2)  # Wait for page to reload with new date
                 
             except Exception as e:
-                print(f"  ⚠ Could not set date fields: {e}")
+                print(f"  WARNING: Could not set date fields: {e}")
                 return None
             
             # Step 3: Click the "Breviary" link
@@ -294,7 +294,7 @@ class BBGRLSlideGeneratorV2:
                 breviary_link.click()
                 time.sleep(2)
             except Exception as e:
-                print(f"  ⚠ Could not find 'Breviary' link: {e}")
+                print(f"  WARNING: Could not find 'Breviary' link: {e}")
                 return None
             
             # Step 4: Click on the "Morning Prayer" link
@@ -313,11 +313,11 @@ class BBGRLSlideGeneratorV2:
                     morning_prayer_link.click()
                     time.sleep(2)
                 else:
-                    print("  ⚠ Could not find 'Morning Prayer' link")
+                    print("  WARNING: Could not find 'Morning Prayer' link")
                     return None
                     
             except Exception as e:
-                print(f"  ⚠ Error clicking Morning Prayer: {e}")
+                print(f"  WARNING: Error clicking Morning Prayer: {e}")
                 return None
             
             # Get the final page HTML
@@ -349,12 +349,12 @@ class BBGRLSlideGeneratorV2:
             html_content = self._navigate_ibreviary_to_date(target_date)
             
             if not html_content:
-                print(f"  ⚠ Selenium navigation failed, using fallback data")
+                print(f"  WARNING: Selenium navigation failed, using fallback data")
                 return self._get_fallback_morning_prayer()
             
             # Parse the HTML content
             soup = BeautifulSoup(html_content, 'html.parser')
-            full_text = soup.get_text()
+            full_text = soup.get_text(separator='\n')
             
             # Find "PSALMODY" in all caps and extract only the text AFTER it
             # This skips the "Tune:" and "Text:" segments that come before PSALMODY
@@ -372,7 +372,7 @@ class BBGRLSlideGeneratorV2:
                 # Fallback: use full text if PSALMODY not found
                 text_after_psalmody = full_text
                 psalmody_soup = soup
-                print(f"  ⚠ PSALMODY marker not found, using full text")
+                print(f"  WARNING: PSALMODY marker not found, using full text")
             
             # Extract and structure the content to match reference format
             # Pass soup object and text_after_psalmody for parsing
@@ -394,7 +394,8 @@ class BBGRLSlideGeneratorV2:
                     "antiphon": self._extract_gospel_antiphon(text_after_psalmody),
                     "benedictus_verses": self._extract_benedictus_verses(text_after_psalmody)
                 },
-                "intercessions": self._extract_intercessions(soup, full_text)
+                "intercessions": self._extract_intercessions(soup, full_text),
+                "concluding_prayer": self._extract_concluding_prayer(full_text)
             }
             
             return structured
@@ -502,7 +503,7 @@ class BBGRLSlideGeneratorV2:
                                 psalm_subtitle = lines[1].strip()
                                 print(f"  Found red psalm subtitle: {psalm_subtitle}")
                 except Exception as e:
-                    print(f"  ⚠ Could not extract red psalm text from HTML: {e}")
+                    print(f"  WARNING: Could not extract red psalm text from HTML: {e}")
 
                 
                 # Fallback: Extract psalm info from the section after PSALMODY using regex
@@ -638,7 +639,7 @@ class BBGRLSlideGeneratorV2:
                     break
             
             if not ant_span:
-                print(f"  ⚠ Could not find Ant. {psalm_number} in HTML")
+                print(f"  WARNING: Could not find Ant. {psalm_number} in HTML")
                 return self._get_fallback_verses(psalm_number)
             
             # Find the parent element and get its HTML
@@ -740,7 +741,7 @@ class BBGRLSlideGeneratorV2:
                 return verses
                 
         except Exception as e:
-            print(f"  ⚠ Error parsing psalm verses from HTML: {e}")
+            print(f"  WARNING: Error parsing psalm verses from HTML: {e}")
             import traceback
             traceback.print_exc()
         
@@ -849,7 +850,7 @@ class BBGRLSlideGeneratorV2:
                 return verses
                 
         except Exception as e:
-            print(f"  ⚠ Error parsing psalm verses: {e}")
+            print(f"  WARNING: Error parsing psalm verses: {e}")
             import traceback
             traceback.print_exc()
         
@@ -894,7 +895,7 @@ class BBGRLSlideGeneratorV2:
                     break
             
             if not canticle_span:
-                print(f"  ⚠ Could not find Canticle marker in HTML")
+                print(f"  WARNING: Could not find Canticle marker in HTML")
                 return self._get_fallback_canticle_verses()
             
             # Find the parent element and get its HTML
@@ -999,7 +1000,7 @@ class BBGRLSlideGeneratorV2:
                 }
                 
         except Exception as e:
-            print(f"  ⚠ Error parsing canticle verses from HTML: {e}")
+            print(f"  WARNING: Error parsing canticle verses from HTML: {e}")
             import traceback
             traceback.print_exc()
         
@@ -1098,7 +1099,7 @@ class BBGRLSlideGeneratorV2:
                                 "subtitle": ""
                             }
         except Exception as e:
-            print(f"  ⚠ Error extracting canticle info: {e}")
+            print(f"  WARNING: Error extracting canticle info: {e}")
         
         # Fallback
         return {
@@ -1121,7 +1122,7 @@ class BBGRLSlideGeneratorV2:
             reading_matches = list(re.finditer(r'READING', text, re.IGNORECASE))
             
             if not reading_matches:
-                print("  ⚠ No READING marker found")
+                print("  WARNING: No READING marker found")
                 return {"citation": "", "text": ""}
             
             # Find the first READING that has a RESPONSORY after it
@@ -1136,14 +1137,14 @@ class BBGRLSlideGeneratorV2:
                     break
             
             if reading_start is None:
-                print("  ⚠ No READING with RESPONSORY found")
+                print("  WARNING: No READING with RESPONSORY found")
                 return {"citation": "", "text": ""}
             
             # Find RESPONSORY after the last READING
             responsory_match = re.search(r'RESPONSORY', text[reading_start:], re.IGNORECASE)
             
             if not responsory_match:
-                print("  ⚠ No RESPONSORY marker found after READING")
+                print("  WARNING: No RESPONSORY marker found after READING")
                 return {"citation": "", "text": ""}
             
             # Extract the reading section
@@ -1178,7 +1179,7 @@ class BBGRLSlideGeneratorV2:
             }
             
         except Exception as e:
-            print(f"  ⚠ Error extracting short reading: {e}")
+            print(f"  WARNING: Error extracting short reading: {e}")
             return {"citation": "", "text": ""}
 
     def _extract_responsory_from_html(self, soup, text):
@@ -1199,7 +1200,7 @@ class BBGRLSlideGeneratorV2:
             # Find RESPONSORY marker in plain text
             responsory_match = re.search(r'RESPONSORY', text, re.IGNORECASE)
             if not responsory_match:
-                print("  ⚠ No RESPONSORY marker found in text")
+                print("  WARNING: No RESPONSORY marker found in text")
                 return []
             
             # Start after RESPONSORY marker
@@ -1291,7 +1292,7 @@ class BBGRLSlideGeneratorV2:
             # Slide 3: Seg 4 + "— " + Seg 5 (Priest)
             
             if len(all_segments) < 6:
-                print(f"  ⚠ Expected 6 segments but found {len(all_segments)}, structure may be incorrect")
+                print(f"  WARNING: Expected 6 segments but found {len(all_segments)}, structure may be incorrect")
                 return []
             
             responsory_verses = []
@@ -1331,7 +1332,7 @@ class BBGRLSlideGeneratorV2:
             return responsory_verses
             
         except Exception as e:
-            print(f"  ⚠ Error extracting responsory from HTML: {e}")
+            print(f"  WARNING: Error extracting responsory from HTML: {e}")
             traceback.print_exc()
             return []
 
@@ -1354,7 +1355,7 @@ class BBGRLSlideGeneratorV2:
             responsory_match = re.search(r'RESPONSORY', text, re.IGNORECASE)
             
             if not responsory_match:
-                print("  ⚠ No RESPONSORY marker found")
+                print("  WARNING: No RESPONSORY marker found")
                 return []
             
             # Start after RESPONSORY marker
@@ -1407,7 +1408,7 @@ class BBGRLSlideGeneratorV2:
             # Line 6: — Main response (repeated)
             
             if len(lines) < 6:
-                print(f"  ⚠ Responsory has {len(lines)} lines, expected at least 6")
+                print(f"  WARNING: Responsory has {len(lines)} lines, expected at least 6")
                 return []
             
             # Build the responsory as alternating priest/people responses
@@ -1456,7 +1457,7 @@ class BBGRLSlideGeneratorV2:
             return responsory_verses
             
         except Exception as e:
-            print(f"  ⚠ Error extracting responsory: {e}")
+            print(f"  WARNING: Error extracting responsory: {e}")
             traceback.print_exc()
             return []
 
@@ -1473,7 +1474,7 @@ class BBGRLSlideGeneratorV2:
             # Find GOSPEL CANTICLE marker
             gc_match = re.search(r'GOSPEL\s+CANTICLE', text, re.IGNORECASE)
             if not gc_match:
-                print("  ⚠ No GOSPEL CANTICLE marker found")
+                print("  WARNING: No GOSPEL CANTICLE marker found")
                 return ""
             
             # Start after GOSPEL CANTICLE
@@ -1482,7 +1483,7 @@ class BBGRLSlideGeneratorV2:
             # Find "Ant." marker
             ant_match = re.search(r'Ant\.', text[start_pos:start_pos+500], re.IGNORECASE)
             if not ant_match:
-                print("  ⚠ No antiphon marker found after GOSPEL CANTICLE")
+                print("  WARNING: No antiphon marker found after GOSPEL CANTICLE")
                 return ""
             
             # Start after "Ant."
@@ -1519,7 +1520,7 @@ class BBGRLSlideGeneratorV2:
                 return antiphon_text
             
         except Exception as e:
-            print(f"  ⚠ Error extracting gospel antiphon: {e}")
+            print(f"  WARNING: Error extracting gospel antiphon: {e}")
             traceback.print_exc()
         
         return ""
@@ -1537,8 +1538,70 @@ class BBGRLSlideGeneratorV2:
         return "[Intercessions for today]"
 
     def _extract_concluding_prayer(self, text):
-        """Extract concluding prayer/collect"""
-        return "[Concluding prayer for today]"
+        """Extract concluding prayer that appears after intercessions
+        
+        Pattern:
+        CONCLUDING PRAYER
+        [Prayer title - optional]
+        [Prayer text - multiple lines]
+        — Amen[.]
+        
+        If there's an "Or:" section, always take the first option (before "Or:")
+        
+        Returns the full prayer text including "— Amen"
+        """
+        try:
+            # Find CONCLUDING PRAYER marker
+            prayer_match = re.search(r'CONCLUDING\s+PRAYER', text, re.IGNORECASE)
+            
+            if not prayer_match:
+                print("  WARNING: No CONCLUDING PRAYER marker found")
+                return ""
+            
+            # Start after CONCLUDING PRAYER marker
+            prayer_start = prayer_match.end()
+            
+            # Find where to stop: Look for "Or:" (alternative prayer) or next major section
+            # We want everything up to but not including "Or:" or next section
+            stop_patterns = [
+                r'\bOr:',  # Alternative prayer option
+                r'SACRED\s+HEART',
+                r'MASS\s+READINGS',
+                r'FIRST\s+READING',
+            ]
+            
+            prayer_end = len(text)
+            for pattern in stop_patterns:
+                stop_match = re.search(pattern, text[prayer_start:], re.IGNORECASE)
+                if stop_match:
+                    prayer_end = prayer_start + stop_match.start()
+                    break
+            
+            # Extract the prayer section
+            prayer_section = text[prayer_start:prayer_end].strip()
+            
+            # The prayer ends with "— Amen" or "— Amen."
+            # Find this ending and include it
+            amen_match = re.search(r'—\s*Amen\.?', prayer_section, re.IGNORECASE)
+            if amen_match:
+                # Trim to end at Amen
+                prayer_section = prayer_section[:amen_match.end()].strip()
+            
+            # Clean up whitespace: collapse multiple spaces but preserve single line breaks
+            # Replace multiple consecutive newlines with double newline
+            prayer_section = re.sub(r'\n\s*\n+', '\n', prayer_section)
+            # Normalize spaces (but not around newlines)
+            prayer_section = re.sub(r'[ \t]+', ' ', prayer_section)
+            # Remove spaces at start of lines
+            prayer_section = re.sub(r'\n ', '\n', prayer_section)
+            
+            print(f"  Found CONCLUDING PRAYER: {prayer_section[:50]}...")
+            return prayer_section
+            
+        except Exception as e:
+            print(f"  WARNING: Error extracting concluding prayer: {e}")
+            traceback.print_exc()
+            return ""
 
     def _extract_first_reading_citation(self, text):
         """Extract first reading citation"""
@@ -1628,10 +1691,21 @@ class BBGRLSlideGeneratorV2:
                 "antiphon_1": {"text": "", "format": "all_response", "psalm_title": "", "psalm_subtitle": ""},
                 "psalm_1": [{"speaker": "Priest", "text": ""}],
                 "antiphon_2": {"text": "", "format": "all_response"}, 
-                "canticle": [{"speaker": "Priest", "text": ""}],
+                "canticle_info": {"title": "", "subtitle": ""},
+                "canticle": {"verses": [{"speaker": "Priest", "text": ""}], "omit_glory_be": False},
                 "antiphon_3": {"text": "", "format": "all_response", "psalm_title": "", "psalm_subtitle": ""},
                 "psalm_3": [{"speaker": "Priest", "text": ""}]
-            }
+            },
+            "reading": {
+                "short_reading": {"citation": "", "text": ""},
+                "responsory": []
+            },
+            "gospel_canticle": {
+                "antiphon": "",
+                "benedictus_verses": []
+            },
+            "intercessions": [],
+            "concluding_prayer": ""
         }
 
     def _get_fallback_readings(self):
@@ -1698,6 +1772,7 @@ class BBGRLSlideGeneratorV2:
         slide_count = self._create_gospel_canticle_section(prs, liturgical_data, slide_count)
         slide_count = self._create_intercessions_section(prs, liturgical_data, slide_count)
         slide_count = self._create_lords_prayer_slide(prs, slide_count)
+        slide_count = self._create_concluding_prayer_slides(prs, liturgical_data, slide_count)
         slide_count = self._create_sacred_heart_hymns(prs, liturgical_data, slide_count)
         slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
         slide_count = self._create_post_communion_prayers(prs, liturgical_data, slide_count)
@@ -2321,7 +2396,7 @@ class BBGRLSlideGeneratorV2:
         reading_data = liturgical_data.get('morning_prayer', {}).get('reading', {}).get('short_reading', {})
         
         if not reading_data or not reading_data.get('text'):
-            print(f"  ⚠ No reading data available, skipping reading section")
+            print(f"  WARNING: No reading data available, skipping reading section")
             return slide_count
         
         # Create single slide with title and content
@@ -2381,7 +2456,7 @@ class BBGRLSlideGeneratorV2:
         responsory_verses = liturgical_data.get('morning_prayer', {}).get('reading', {}).get('responsory', [])
         
         if not responsory_verses:
-            print(f"  ⚠ No responsory data available, skipping responsory section")
+            print(f"  WARNING: No responsory data available, skipping responsory section")
             return slide_count
         
         # Create slides for each responsory part
@@ -2489,7 +2564,7 @@ class BBGRLSlideGeneratorV2:
             antiphon_text = gospel_canticle.get('antiphon', '')
             
             if not antiphon_text:
-                print("  ⚠ No gospel canticle antiphon found, skipping section")
+                print("  WARNING: No gospel canticle antiphon found, skipping section")
                 return slide_count
             
             # Create single combined slide with header and antiphon
@@ -2680,7 +2755,7 @@ class BBGRLSlideGeneratorV2:
             return slide_count
             
         except Exception as e:
-            print(f"  ⚠ Error creating gospel canticle section: {e}")
+            print(f"  WARNING: Error creating gospel canticle section: {e}")
             traceback.print_exc()
             return slide_count
 
@@ -2695,7 +2770,7 @@ class BBGRLSlideGeneratorV2:
             intercessions_matches = list(re.finditer(r'INTERCESSIONS', html_content, re.IGNORECASE))
             
             if not intercessions_matches:
-                print("  ⚠ No INTERCESSIONS marker found")
+                print("  WARNING: No INTERCESSIONS marker found")
                 return []
             
             # Use the LAST instance (after Gospel Canticle)
@@ -2823,7 +2898,7 @@ class BBGRLSlideGeneratorV2:
             return all_intercessions
             
         except Exception as e:
-            print(f"  ⚠ Error extracting intercessions: {e}")
+            print(f"  WARNING: Error extracting intercessions: {e}")
             traceback.print_exc()
             return []
 
@@ -2942,7 +3017,7 @@ class BBGRLSlideGeneratorV2:
             return slide_count
             
         except Exception as e:
-            print(f"  ⚠ Error creating intercessions section: {e}")
+            print(f"  WARNING: Error creating intercessions section: {e}")
             traceback.print_exc()
             return slide_count
 
@@ -2972,7 +3047,116 @@ class BBGRLSlideGeneratorV2:
             return slide_count
             
         except Exception as e:
-            print(f"  ⚠ Error creating Lord's Prayer slide: {e}")
+            print(f"  WARNING: Error creating Lord's Prayer slide: {e}")
+            traceback.print_exc()
+            return slide_count
+
+    def _create_concluding_prayer_slides(self, prs, liturgical_data, slide_count):
+        """Create concluding prayer slides (split across 2 slides)
+        
+        First slide: "CONCLUDING PRAYER" title + first half of prayer
+        Second slide: Second half of prayer (includes "— Amen")
+        Both slides are centered with black text, 44pt font.
+        """
+        try:
+            # Get concluding prayer from liturgical data
+            concluding_prayer = liturgical_data.get('morning_prayer', {}).get('concluding_prayer', '')
+            
+            if not concluding_prayer:
+                print("  WARNING: No concluding prayer found, skipping slides")
+                return slide_count
+            
+            # Split the prayer text roughly in half
+            # Strategy: Split by lines and divide them between two slides
+            lines = concluding_prayer.split('\n')
+            lines = [line.strip() for line in lines if line.strip()]  # Remove empty lines
+            
+            # Find the midpoint
+            total_lines = len(lines)
+            mid_point = total_lines // 2
+            
+            # Adjust midpoint to ensure "— Amen" stays on the second slide
+            if total_lines > 1:
+                for i in range(len(lines)):
+                    if lines[i].strip().startswith('—') and 'Amen' in lines[i]:
+                        # Found the Amen line, make sure it's on second slide
+                        if i <= mid_point:
+                            mid_point = max(1, i - 1)  # Put at least one line before Amen on second slide
+                        break
+            
+            first_half = '\n'.join(lines[:mid_point])
+            second_half = '\n'.join(lines[mid_point:])
+            
+            # Skip creating slides if either half is empty
+            if not first_half or not second_half:
+                print("  WARNING: Prayer text too short or improperly split, skipping")
+                return slide_count
+            
+            # Create first slide with title
+            slide_count += 1
+            slide1 = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Use a larger text box with proper margins
+            content_box1 = slide1.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.33), Inches(6.5))
+            content_frame1 = content_box1.text_frame
+            content_frame1.word_wrap = True
+            content_frame1.margin_top = Inches(0.2)
+            content_frame1.margin_bottom = Inches(0.2)
+            content_frame1.margin_left = Inches(0.3)
+            content_frame1.margin_right = Inches(0.3)
+            
+            # Add title
+            title_para1 = content_frame1.paragraphs[0]
+            title_para1.alignment = PP_ALIGN.CENTER
+            title_run1 = title_para1.add_run()
+            title_run1.text = "CONCLUDING PRAYER"
+            title_run1.font.name = "Georgia"
+            title_run1.font.size = Pt(36)
+            title_run1.font.bold = True
+            title_run1.font.color.rgb = RGBColor(0, 0, 0)  # Black
+            
+            # Add prayer text
+            content_para1 = content_frame1.add_paragraph()
+            content_para1.alignment = PP_ALIGN.CENTER
+            content_para1.space_before = Pt(14)
+            content_run1 = content_para1.add_run()
+            content_run1.text = first_half
+            content_run1.font.name = "Georgia"
+            content_run1.font.size = Pt(32)
+            content_run1.font.bold = True
+            content_run1.font.color.rgb = RGBColor(0, 0, 0)  # Black
+            
+            print(f"Created slide {slide_count}: Concluding Prayer (1/2)")
+            
+            # Create second slide
+            slide_count += 1
+            slide2 = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Use a larger text box with proper margins
+            content_box2 = slide2.shapes.add_textbox(Inches(0.5), Inches(0.75), Inches(12.33), Inches(6))
+            content_frame2 = content_box2.text_frame
+            content_frame2.word_wrap = True
+            content_frame2.margin_top = Inches(0.2)
+            content_frame2.margin_bottom = Inches(0.2)
+            content_frame2.margin_left = Inches(0.3)
+            content_frame2.margin_right = Inches(0.3)
+            
+            content_para2 = content_frame2.paragraphs[0]
+            content_para2.alignment = PP_ALIGN.CENTER
+            
+            content_run2 = content_para2.add_run()
+            content_run2.text = second_half
+            content_run2.font.name = "Georgia"
+            content_run2.font.size = Pt(32)
+            content_run2.font.bold = True
+            content_run2.font.color.rgb = RGBColor(0, 0, 0)  # Black
+            
+            print(f"Created slide {slide_count}: Concluding Prayer (2/2)")
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating concluding prayer slides: {e}")
             traceback.print_exc()
             return slide_count
 
