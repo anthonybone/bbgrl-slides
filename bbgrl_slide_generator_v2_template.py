@@ -1464,8 +1464,68 @@ class BBGRLSlideGeneratorV2:
             return []
 
     def _extract_gospel_antiphon(self, text):
-        """Extract gospel canticle antiphon"""
-        return "[Gospel canticle antiphon for today]"
+        """Extract gospel canticle antiphon
+        
+        Pattern:
+        GOSPEL CANTICLE
+        Ant. [Optional category like [Martyrs]] [Antiphon text]
+        
+        Returns the full antiphon text including any category markers
+        """
+        try:
+            # Find GOSPEL CANTICLE marker
+            gc_match = re.search(r'GOSPEL\s+CANTICLE', text, re.IGNORECASE)
+            if not gc_match:
+                print("  ⚠ No GOSPEL CANTICLE marker found")
+                return ""
+            
+            # Start after GOSPEL CANTICLE
+            start_pos = gc_match.end()
+            
+            # Find "Ant." marker
+            ant_match = re.search(r'Ant\.', text[start_pos:start_pos+500], re.IGNORECASE)
+            if not ant_match:
+                print("  ⚠ No antiphon marker found after GOSPEL CANTICLE")
+                return ""
+            
+            # Start after "Ant."
+            ant_start = start_pos + ant_match.end()
+            
+            # Find where antiphon ends - typically at "Canticle" or "Benedictus" or next major section
+            # The antiphon can span multiple sentences, so we need to find the next structural marker
+            stop_patterns = [
+                r'Canticle\s+of\s+Zechariah',
+                r'Benedictus',
+                r'Canticle:',
+                r'INTERCESSIONS',
+                r'Let us pray',
+            ]
+            
+            end_pos = len(text)
+            for pattern in stop_patterns:
+                stop_match = re.search(pattern, text[ant_start:ant_start+2000], re.IGNORECASE)
+                if stop_match:
+                    end_pos = ant_start + stop_match.start()
+                    break
+            
+            # Extract antiphon text
+            antiphon_text = text[ant_start:end_pos].strip()
+            
+            # Clean up: remove extra whitespace and newlines
+            antiphon_text = re.sub(r'\s+', ' ', antiphon_text).strip()
+            
+            # Remove any trailing section markers that might have slipped in
+            antiphon_text = re.sub(r'(Canticle|Benedictus|INTERCESSIONS).*$', '', antiphon_text, flags=re.IGNORECASE).strip()
+            
+            if antiphon_text:
+                print(f"  Found Gospel Canticle antiphon: {antiphon_text[:80]}...")
+                return antiphon_text
+            
+        except Exception as e:
+            print(f"  ⚠ Error extracting gospel antiphon: {e}")
+            traceback.print_exc()
+        
+        return ""
 
     def _extract_benedictus_verses(self, text):
         """Extract Benedictus verses - these are standard but can be customized"""
@@ -2417,9 +2477,83 @@ class BBGRLSlideGeneratorV2:
         return slide_count
 
     def _create_gospel_canticle_section(self, prs, liturgical_data, slide_count):
-        """Create gospel canticle section following reference template"""
-        # Implementation would follow reference structure 
-        return slide_count + 12  # Placeholder
+        """Create gospel canticle section following reference template
+        
+        Structure:
+        1. GOSPEL CANTICLE title slide
+        2. Antiphon slide with the gospel canticle antiphon text (ALL in purple)
+        
+        The antiphon may contain category markers like [Martyrs] or [Pastors]
+        which should be displayed as part of the antiphon text.
+        """
+        try:
+            gospel_canticle = liturgical_data['morning_prayer']['gospel_canticle']
+            antiphon_text = gospel_canticle.get('antiphon', '')
+            
+            if not antiphon_text:
+                print("  ⚠ No gospel canticle antiphon found, skipping section")
+                return slide_count
+            
+            # Create single combined slide with header and antiphon
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            slide_count += 1
+            
+            # Add "GOSPEL CANTICLE" header at the top
+            header_left = Inches(0.5)
+            header_top = Inches(0.5)
+            header_width = Inches(12.33)
+            header_height = Inches(1)
+            
+            header_box = slide.shapes.add_textbox(header_left, header_top, header_width, header_height)
+            header_frame = header_box.text_frame
+            header_frame.word_wrap = True
+            
+            header_p = header_frame.paragraphs[0]
+            header_p.text = "GOSPEL CANTICLE"
+            header_p.alignment = PP_ALIGN.CENTER
+            header_p.font.size = Pt(48)
+            header_p.font.name = 'Georgia'
+            header_p.font.bold = True
+            header_p.font.color.rgb = RGBColor(0, 51, 102)  # Dark blue
+            
+            # Add antiphon content below header with auto-fit
+            content_left = Inches(0.5)
+            content_top = Inches(2)
+            content_width = Inches(12.33)
+            content_height = Inches(5)
+            
+            content_box = slide.shapes.add_textbox(content_left, content_top, content_width, content_height)
+            content_frame = content_box.text_frame
+            content_frame.word_wrap = True
+            content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            content_p = content_frame.paragraphs[0]
+            content_p.alignment = PP_ALIGN.CENTER
+            
+            # Add "Ant. " label in red
+            ant_label = content_p.add_run()
+            ant_label.text = "Ant. "
+            ant_label.font.size = Pt(44)
+            ant_label.font.name = 'Georgia'
+            ant_label.font.bold = True
+            ant_label.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red (like Priest label)
+            
+            # Add antiphon text in purple (ALL response)
+            ant_text = content_p.add_run()
+            ant_text.text = antiphon_text
+            ant_text.font.size = Pt(44)
+            ant_text.font.name = 'Georgia'
+            ant_text.font.bold = True
+            ant_text.font.color.rgb = RGBColor(100, 0, 100)  # Purple for ALL
+            
+            print(f"Created slide {slide_count}: GOSPEL CANTICLE (with header and antiphon)")
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  ⚠ Error creating gospel canticle section: {e}")
+            traceback.print_exc()
+            return slide_count
 
     def _create_intercessions_section(self, prs, liturgical_data, slide_count):
         """Create intercessions section following reference template"""
