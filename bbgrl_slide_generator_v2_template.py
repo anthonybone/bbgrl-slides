@@ -2643,6 +2643,42 @@ class BBGRLSlideGeneratorV2:
                 
                 print(f"Created slide {slide_count}: Benedictus verse {i+1} ({color_name})")
             
+            # Add repeated antiphon slide after Benedictus verses
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Create textbox for repeated antiphon with auto-fit
+            ant_left = Inches(0.5)
+            ant_top = Inches(1)
+            ant_width = Inches(12.33)
+            ant_height = Inches(5.5)
+            
+            ant_box = slide.shapes.add_textbox(ant_left, ant_top, ant_width, ant_height)
+            ant_frame = ant_box.text_frame
+            ant_frame.word_wrap = True
+            ant_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            ant_p = ant_frame.paragraphs[0]
+            ant_p.alignment = PP_ALIGN.CENTER
+            
+            # Add "Ant. " label in blue (All response pattern)
+            ant_label = ant_p.add_run()
+            ant_label.text = "Ant. "
+            ant_label.font.size = Pt(44)
+            ant_label.font.name = 'Georgia'
+            ant_label.font.bold = True
+            ant_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue for repeated antiphon
+            
+            # Add antiphon text in black
+            ant_text_run = ant_p.add_run()
+            ant_text_run.text = antiphon_text
+            ant_text_run.font.size = Pt(44)
+            ant_text_run.font.name = 'Georgia'
+            ant_text_run.font.bold = True
+            ant_text_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+            
+            print(f"Created slide {slide_count}: Repeated Gospel Canticle Antiphon")
+            
             return slide_count
             
         except Exception as e:
