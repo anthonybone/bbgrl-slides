@@ -11,11 +11,12 @@ from bs4 import BeautifulSoup
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_AUTO_SIZE
+from pptx.enum.text import PP_ALIGN, MSO_AUTO_SIZE, MSO_ANCHOR
 import re
 from datetime import datetime, timedelta
 import sys
 import os
+import traceback
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -387,7 +388,7 @@ class BBGRLSlideGeneratorV2:
                 },
                 "reading": {
                     "short_reading": self._extract_short_reading(text_after_psalmody),
-                    "responsory": self._extract_responsory(text_after_psalmody)
+                    "responsory": self._extract_responsory_from_html(soup, text_after_psalmody)
                 },
                 "gospel_canticle": {
                     "antiphon": self._extract_gospel_antiphon(text_after_psalmody),
@@ -1183,19 +1184,284 @@ class BBGRLSlideGeneratorV2:
             print(f"  ⚠ Error extracting short reading: {e}")
             return {"citation": "", "text": ""}
 
+    def _extract_responsory_from_html(self, soup, text):
+        """Extract responsory from text with proper parsing
+        
+        Pattern in plain text:
+        RESPONSORY
+        [Main response line]
+        — [Main response line repeated]
+        [Verse line]
+        — [Shortened response]
+        Glory to the Father...
+        — [Main response line repeated]
+        
+        Returns a list of dicts with 'speaker' and 'text' keys
+        """
+        try:
+            # Find RESPONSORY marker in plain text
+            responsory_match = re.search(r'RESPONSORY', text, re.IGNORECASE)
+            if not responsory_match:
+                print("  ⚠ No RESPONSORY marker found in text")
+                return []
+            
+            # Start after RESPONSORY marker
+            responsory_start = responsory_match.end()
+            
+            # Find where to stop: "Or:" or "GOSPEL CANTICLE"
+            stop_patterns = [
+                r'\bOr:',
+                r'GOSPEL\s+CANTICLE',
+                r'CANTICLE\s+OF\s+ZECHARIAH',
+            ]
+            
+            responsory_end = len(text)
+            for pattern in stop_patterns:
+                stop_match = re.search(pattern, text[responsory_start:], re.IGNORECASE)
+                if stop_match:
+                    responsory_end = responsory_start + stop_match.start()
+                    break
+            
+            # Extract the responsory section
+            responsory_section = text[responsory_start:responsory_end].strip()
+            
+            # First, normalize the em dash characters
+            normalized_section = responsory_section.replace('\u2014', '—').replace('\u2013', '—').replace('\u2015', '—')
+            
+            # Split by em dash to separate the response lines
+            # This gives us segments like: [main text]—[response 1+verse]—[response 2+glory]—[final response]
+            # Keep each em-dash-separated part as a whole segment
+            em_dash_parts = [part.strip() for part in normalized_section.split('—') if part.strip()]
+            
+            # Now we need to further split parts that contain multiple sentences
+            # Part 0: Main response (single sentence)
+            # Part 1: Repeated response + Verse (need to split by period)
+            # Part 2: Shortened response + Glory Be (need to split by period)
+            # Part 3: Final response (single sentence)
+            
+            all_segments = []
+            
+            # Add first part as-is (main response)
+            if len(em_dash_parts) > 0:
+                all_segments.append(em_dash_parts[0])
+            
+            # Split part 1 (repeated + verse) by period
+            if len(em_dash_parts) > 1:
+                part1_sentences = []
+                current = ""
+                for i, char in enumerate(em_dash_parts[1]):
+                    current += char
+                    if char == '.' and i + 1 < len(em_dash_parts[1]):
+                        # Check if next char is space or uppercase (new sentence)
+                        next_char = em_dash_parts[1][i + 1]
+                        if next_char.isupper() or (i + 2 < len(em_dash_parts[1]) and em_dash_parts[1][i + 2].isupper()):
+                            part1_sentences.append(current.strip())
+                            current = ""
+                if current.strip():
+                    part1_sentences.append(current.strip())
+                all_segments.extend(part1_sentences)
+            
+            # Split part 2 (shortened + Glory) by period before "Glory"
+            if len(em_dash_parts) > 2:
+                # Find "Glory to the Father" in this part
+                glory_pattern = r'(.*?)(Glory\s+to\s+the\s+Father.*)'
+                glory_match = re.search(glory_pattern, em_dash_parts[2], re.IGNORECASE | re.DOTALL)
+                if glory_match:
+                    shortened = glory_match.group(1).strip()
+                    glory = glory_match.group(2).strip()
+                    if shortened:
+                        all_segments.append(shortened)
+                    if glory:
+                        all_segments.append(glory)
+                else:
+                    # No Glory found, just add the whole part
+                    all_segments.append(em_dash_parts[2])
+            
+            # Add remaining parts as-is
+            for i in range(3, len(em_dash_parts)):
+                all_segments.append(em_dash_parts[i])
+            
+            # Build responsory verses according to the 6-segment pattern:
+            # Segment 0: Main response
+            # Segment 1: Repeated response (after first em dash)
+            # Segment 2: Verse
+            # Segment 3: Shortened response (after second em dash)
+            # Segment 4: Glory Be
+            # Segment 5: Final response (after third em dash)
+            #
+            # Slide 1: RESPONSORY title + Seg 0 + "— " + Seg 1 (ALL)
+            # Slide 2: Seg 2 + "— " + Seg 3 (Priest)
+            # Slide 3: Seg 4 + "— " + Seg 5 (Priest)
+            
+            if len(all_segments) < 6:
+                print(f"  ⚠ Expected 6 segments but found {len(all_segments)}, structure may be incorrect")
+                return []
+            
+            responsory_verses = []
+            
+            # Slide 1: Main response + repeated response (both ALL)
+            combined_first = all_segments[0].strip()
+            if len(all_segments) > 1:
+                combined_first += "\n— " + all_segments[1].strip()
+            
+            responsory_verses.append({
+                "speaker": "All",
+                "text": combined_first,
+                "include_title": True  # This slide should have the RESPONSORY title
+            })
+            
+            # Slide 2: Verse (Priest) + shortened response (with em dash)
+            combined_verse = all_segments[2].strip()
+            if len(all_segments) > 3:
+                combined_verse += "\n— " + all_segments[3].strip()
+            
+            responsory_verses.append({
+                "speaker": "Priest",
+                "text": combined_verse
+            })
+            
+            # Slide 3: Glory Be (Priest) + final response (with em dash)
+            combined_glory = all_segments[4].strip()
+            if len(all_segments) > 5:
+                combined_glory += "\n— " + all_segments[5].strip()
+            
+            responsory_verses.append({
+                "speaker": "Priest",
+                "text": combined_glory
+            })
+            
+            print(f"  Found RESPONSORY with {len(responsory_verses)} parts")
+            return responsory_verses
+            
+        except Exception as e:
+            print(f"  ⚠ Error extracting responsory from HTML: {e}")
+            traceback.print_exc()
+            return []
+
     def _extract_responsory(self, text):
-        """Extract responsory text"""
-        responsory_patterns = [
-            r'Responsory[:\s]*([^.]+\.)',
-            r'℟[:\s]*([^.]+\.)'
-        ]
+        """Extract responsory text with call-and-response structure
         
-        for pattern in responsory_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+        Pattern:
+        RESPONSORY
+        [Main response line]
+        — [Main response line repeated]
+        [Verse line]
+        — [Shortened response]
+        Glory to the Father...
+        — [Main response line repeated]
         
-        return "[Responsory for today]"
+        Returns a list of dicts with 'speaker' and 'text' keys for alternating priest/people
+        """
+        try:
+            # Find first instance of RESPONSORY (case-insensitive)
+            responsory_match = re.search(r'RESPONSORY', text, re.IGNORECASE)
+            
+            if not responsory_match:
+                print("  ⚠ No RESPONSORY marker found")
+                return []
+            
+            # Start after RESPONSORY marker
+            responsory_start = responsory_match.end()
+            
+            # Find where to stop: Look for "GOSPEL CANTICLE" or "CANTICLE OF ZECHARIAH" or "OR" (for alternative readings)
+            stop_patterns = [
+                r'GOSPEL\s+CANTICLE',
+                r'CANTICLE\s+OF\s+ZECHARIAH',
+                r'\bOR\b',  # Alternative reading marker
+                r'INTERCESSIONS'
+            ]
+            
+            responsory_end = len(text)
+            for pattern in stop_patterns:
+                stop_match = re.search(pattern, text[responsory_start:], re.IGNORECASE)
+                if stop_match:
+                    responsory_end = responsory_start + stop_match.start()
+                    break
+            
+            # Extract responsory section
+            responsory_section = text[responsory_start:responsory_end].strip()
+            
+            # Debug: Print the raw responsory section to understand the structure
+            print(f"  DEBUG: Responsory section length: {len(responsory_section)}")
+            print(f"  DEBUG: Responsory section preview: {responsory_section[:300]}")
+            
+            # Split into lines - try different approaches
+            # The em dash (—) is a special character that may not split properly with \n alone
+            # Replace various whitespace and em dash patterns with newlines first
+            normalized_section = responsory_section.replace('\r\n', '\n').replace('\r', '\n')
+            
+            # Split by newline
+            all_lines = normalized_section.split('\n')
+            
+            # Filter out empty lines and clean up
+            lines = [line.strip() for line in all_lines if line.strip() and len(line.strip()) > 3]
+            
+            print(f"  DEBUG: Found {len(lines)} non-empty lines")
+            for i, line in enumerate(lines[:10]):  # Show first 10 lines
+                print(f"    Line {i}: {line[:80]}")
+            
+            # Parse the responsory structure
+            # Expected pattern (6 lines total):
+            # Line 1: Main response
+            # Line 2: — Main response (repeated)
+            # Line 3: Verse
+            # Line 4: — Shortened response
+            # Line 5: Glory to the Father...
+            # Line 6: — Main response (repeated)
+            
+            if len(lines) < 6:
+                print(f"  ⚠ Responsory has {len(lines)} lines, expected at least 6")
+                return []
+            
+            # Build the responsory as alternating priest/people responses
+            responsory_verses = []
+            
+            # Line 1: Main response (ALL)
+            responsory_verses.append({
+                "speaker": "All",
+                "text": lines[0]
+            })
+            
+            # Line 2: Repeated main response (ALL) - skip the "—" prefix
+            # (This is typically the same as line 1, so we can skip it in slides)
+            
+            # Line 3: Verse (Priest)
+            responsory_verses.append({
+                "speaker": "Priest",
+                "text": lines[2]
+            })
+            
+            # Line 4: Shortened response (ALL) - remove "—" prefix
+            response_text = lines[3]
+            if response_text.startswith('—'):
+                response_text = response_text[1:].strip()
+            responsory_verses.append({
+                "speaker": "All",
+                "text": response_text
+            })
+            
+            # Line 5: Glory Be (Priest)
+            responsory_verses.append({
+                "speaker": "Priest",
+                "text": lines[4]
+            })
+            
+            # Line 6: Final response (ALL) - remove "—" prefix
+            final_response = lines[5]
+            if final_response.startswith('—'):
+                final_response = final_response[1:].strip()
+            responsory_verses.append({
+                "speaker": "All",
+                "text": final_response
+            })
+            
+            print(f"  Found RESPONSORY with {len(responsory_verses)} parts")
+            return responsory_verses
+            
+        except Exception as e:
+            print(f"  ⚠ Error extracting responsory: {e}")
+            traceback.print_exc()
+            return []
 
     def _extract_gospel_antiphon(self, text):
         """Extract gospel canticle antiphon"""
@@ -1371,6 +1637,7 @@ class BBGRLSlideGeneratorV2:
         slide_count = self._create_opening_slides(prs, liturgical_data, slide_count)
         slide_count = self._create_psalmody_section(prs, liturgical_data, slide_count)
         slide_count = self._create_reading_section(prs, liturgical_data, slide_count)
+        slide_count = self._create_responsory_section(prs, liturgical_data, slide_count)
         slide_count = self._create_gospel_canticle_section(prs, liturgical_data, slide_count)
         slide_count = self._create_intercessions_section(prs, liturgical_data, slide_count)
         slide_count = self._create_sacred_heart_hymns(prs, liturgical_data, slide_count)
@@ -2042,6 +2309,110 @@ class BBGRLSlideGeneratorV2:
                 run.font.color.rgb = RGBColor(0, 0, 0)
         
         print(f"Created slide {slide_count}: READING (title + content)")
+        
+        return slide_count
+
+    def _create_responsory_section(self, prs, liturgical_data, slide_count):
+        """Create responsory section with alternating priest/all responses
+        
+        Structure:
+        - First slide: "RESPONSORY" title + first response lines (combined)
+        - Additional slides: Remaining responses with multiple lines per slide
+        """
+        # Get responsory data
+        responsory_verses = liturgical_data.get('morning_prayer', {}).get('reading', {}).get('responsory', [])
+        
+        if not responsory_verses:
+            print(f"  ⚠ No responsory data available, skipping responsory section")
+            return slide_count
+        
+        # Create slides for each responsory part
+        for verse in responsory_verses:
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Check if this slide should include the RESPONSORY title
+            include_title = verse.get('include_title', False)
+            
+            # Determine speaker color
+            speaker = verse.get('speaker', 'Priest')
+            if speaker == 'All':
+                speaker_color = self.reference_template['formatting_rules']['all_color']
+                speaker_label = "(All) "
+            else:
+                speaker_color = self.reference_template['formatting_rules']['priest_color']
+                speaker_label = "(Priest) "
+            
+            # If this is the first slide with title
+            if include_title:
+                # Add RESPONSORY title at top
+                title_box = slide.shapes.add_textbox(
+                    Inches(1), Inches(0.5), Inches(11.33), Inches(1)
+                )
+                title_frame = title_box.text_frame
+                title_frame.word_wrap = True
+                title_frame.text = "RESPONSORY"
+                
+                # Format title
+                for paragraph in title_frame.paragraphs:
+                    paragraph.alignment = PP_ALIGN.CENTER
+                    for run in paragraph.runs:
+                        run.font.size = Pt(48)
+                        run.font.bold = True
+                        run.font.color.rgb = self.reference_template['formatting_rules']['title_color']
+                
+                # Add content below title
+                text_box = slide.shapes.add_textbox(
+                    Inches(0.5), Inches(1.75), Inches(12.33), Inches(5)
+                )
+                vertical_position = Inches(1.75)
+            else:
+                # No title, content starts higher
+                text_box = slide.shapes.add_textbox(
+                    Inches(0.5), Inches(1), Inches(12.33), Inches(5.5)
+                )
+                vertical_position = Inches(1)
+            
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            # Split the text by newlines to handle multi-line responses
+            lines = verse['text'].split('\n')
+            
+            # Add first line with speaker label
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            
+            speaker_run = para.add_run()
+            speaker_run.text = speaker_label
+            speaker_run.font.size = Pt(36)
+            speaker_run.font.name = "Georgia"
+            speaker_run.font.bold = True
+            speaker_run.font.color.rgb = speaker_color
+            
+            # Add first line text in black
+            text_run = para.add_run()
+            text_run.text = lines[0]
+            text_run.font.size = Pt(36)
+            text_run.font.name = "Georgia"
+            text_run.font.bold = True
+            text_run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            # Add remaining lines (without speaker label)
+            for line in lines[1:]:
+                if line.strip():
+                    new_para = text_frame.add_paragraph()
+                    new_para.alignment = PP_ALIGN.CENTER
+                    
+                    line_run = new_para.add_run()
+                    line_run.text = line
+                    line_run.font.size = Pt(36)
+                    line_run.font.name = "Georgia"
+                    line_run.font.bold = True
+                    line_run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            print(f"Created slide {slide_count}: Responsory - {speaker}")
         
         return slide_count
 
