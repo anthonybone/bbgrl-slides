@@ -3,6 +3,15 @@
 output/
 output_v2/
 
+# Debug and test files
+debug_files/
+debug_*.py
+debug_*.txt
+debug_*.html
+intercessions_*.txt
+final_*.txt
+test_output*.txt
+
 # Python cache files
 __pycache__/
 *.pyc

@@ -1697,6 +1697,7 @@ class BBGRLSlideGeneratorV2:
         slide_count = self._create_responsory_section(prs, liturgical_data, slide_count)
         slide_count = self._create_gospel_canticle_section(prs, liturgical_data, slide_count)
         slide_count = self._create_intercessions_section(prs, liturgical_data, slide_count)
+        slide_count = self._create_lords_prayer_slide(prs, slide_count)
         slide_count = self._create_sacred_heart_hymns(prs, liturgical_data, slide_count)
         slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
         slide_count = self._create_post_communion_prayers(prs, liturgical_data, slide_count)
@@ -2942,6 +2943,36 @@ class BBGRLSlideGeneratorV2:
             
         except Exception as e:
             print(f"  ⚠ Error creating intercessions section: {e}")
+            traceback.print_exc()
+            return slide_count
+
+    def _create_lords_prayer_slide(self, prs, slide_count):
+        """Create THE LORD'S PRAYER title slide"""
+        try:
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Add text box for title
+            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(2), Inches(12.33), Inches(3))
+            title_frame = title_box.text_frame
+            title_frame.word_wrap = True
+            
+            title_para = title_frame.paragraphs[0]
+            title_para.alignment = PP_ALIGN.CENTER
+            
+            title_run = title_para.add_run()
+            title_run.text = "THE LORD'S PRAYER"
+            title_run.font.name = "Georgia"
+            title_run.font.size = Pt(80)  # Large font size
+            title_run.font.bold = True
+            title_run.font.color.rgb = RGBColor(0, 0, 139)  # Dark blue
+            
+            print(f"Created slide {slide_count}: THE LORD'S PRAYER (title)")
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  ⚠ Error creating Lord's Prayer slide: {e}")
             traceback.print_exc()
             return slide_count
 
