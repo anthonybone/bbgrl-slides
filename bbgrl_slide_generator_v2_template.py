@@ -382,8 +382,8 @@ class BBGRLSlideGeneratorV2:
                     "antiphon_2": self._extract_antiphon(text_after_psalmody, 2),
                     "canticle_info": self._extract_canticle_info(soup, text_after_psalmody),
                     "canticle": self._extract_canticle_verses(soup, text_after_psalmody),
-                    "antiphon_3": self._extract_antiphon(text_after_psalmody, 3),
-                    "psalm_2": self._extract_psalm_verses_from_html(soup, 2)
+                    "antiphon_3": self._extract_antiphon_and_psalm_info(soup, 3, text_after_psalmody),
+                    "psalm_3": self._extract_psalm_verses_from_html(soup, 3)
                 },
                 "reading": {
                     "short_reading": self._extract_short_reading(text_after_psalmody),
@@ -462,32 +462,35 @@ class BBGRLSlideGeneratorV2:
             psalm_title = ""
             psalm_subtitle = ""
             
-            if number == 1:
+            if number == 1 or number == 3:
                 # Parse directly from text_after_psalmody (already starts after PSALMODY)
-                # Skip the Invitatory section - look for "Ant. 1" specifically (with number)
-                # This will find the actual first antiphon of the Psalmody, not the Invitatory
+                # For Ant 1: Skip the Invitatory section - look for "Ant. 1" specifically
+                # For Ant 3: Look for "Ant. 3" specifically
+                # Pattern needs to capture multi-sentence antiphons (e.g., "sentence 1. sentence 2. sentence 3.")
+                # Stop at: "Psalm" keyword (red text marker) or "Ant." keyword
                 antiphon_patterns = [
-                    r'Ant\.\s*1[:\s]+([^.]+\.)',  # Match "Ant. 1" with number
-                    r'Antiphon\s*1[:\s]+([^.]+\.)',
-                    r'Ant\.\s*1\s+([^.]+\.)',  # Alternate format
+                    rf'Ant\.\s*{number}[:\s]+(.+?)(?=Psalm\s+\d|\nAnt\.)',  # Match until "Psalm" or next "Ant."
+                    rf'Antiphon\s*{number}[:\s]+(.+?)(?=Psalm\s+\d|\nAnt\.)',
                 ]
                 
                 for pattern in antiphon_patterns:
-                    match = re.search(pattern, text_content, re.IGNORECASE)
+                    match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
                     if match:
                         antiphon_text = match.group(1).strip()
-                        print(f"  Found Antiphon 1 text: {antiphon_text[:50]}...")
+                        # Clean up any extra whitespace/newlines within the antiphon
+                        antiphon_text = re.sub(r'\s+', ' ', antiphon_text).strip()
+                        print(f"  Found Antiphon {number} text: {antiphon_text[:50]}...")
                         break
                 
-                # Now extract the red text that comes immediately after "Ant. 1" in the HTML
+                # Now extract the red text that comes immediately after "Ant. X" in the HTML
                 # This is the text in <span class="rubrica"> tags that appear right after the antiphon
                 # It typically shows "Psalm X:Y-Z" followed by a subtitle on the next line
                 try:
-                    # Find "Ant. 1" in a rubrica span using the soup object passed in
-                    ant1_rubrica = soup.find('span', class_='rubrica', string=re.compile(r'Ant\.\s*1'))
-                    if ant1_rubrica:
+                    # Find "Ant. X" in a rubrica span using the soup object passed in
+                    ant_rubrica = soup.find('span', class_='rubrica', string=re.compile(rf'Ant\.\s*{number}'))
+                    if ant_rubrica:
                         # The next rubrica span should have the psalm info
-                        next_rubrica = ant1_rubrica.find_next('span', class_='rubrica')
+                        next_rubrica = ant_rubrica.find_next('span', class_='rubrica')
                         if next_rubrica:
                             # Get the text content which should be something like "Psalm 63:2-9\nA soul thirsting for God"
                             rubrica_text = next_rubrica.get_text(separator='\n').strip()
@@ -505,7 +508,7 @@ class BBGRLSlideGeneratorV2:
 
                 
                 # Fallback: Extract psalm info from the section after PSALMODY using regex
-                # Look for the FIRST psalm pattern in text after PSALMODY and after the antiphon
+                # Look for the psalm pattern in text after PSALMODY and after the antiphon
                 if not psalm_title:
                     # Pattern to match: Psalm 95, Psalm 95:1-5, Psalm 95A, etc.
                     # Capture up to a newline or another "Psalm" keyword
@@ -704,9 +707,17 @@ class BBGRLSlideGeneratorV2:
                 # Skip the first valid section if it looks like the antiphon text
                 # The antiphon typically appears as the very first text section after "Ant. X"
                 # Only skip the FIRST occurrence to avoid false positives with verses that have similar text
+                # For a more reliable check, we look for specific patterns OR check if the text is
+                # relatively short (< 150 chars) and complete (ends with punctuation)
                 if not skipped_first_section and verse_count == 0:
-                    if re.search(r'(Each morning|Martin, priest|My heart is ready)', verse_text, re.IGNORECASE):
+                    # Known antiphon patterns from specific dates
+                    if re.search(r'(Each morning|Martin, priest|My heart is ready|You who stand in his sanctuary)', verse_text, re.IGNORECASE):
                         print(f"  Skipping antiphon text in verse extraction: {verse_text[:50]}...")
+                        skipped_first_section = True
+                        continue
+                    # Generic check: first section that's short and looks like a complete sentence
+                    elif len(verse_text) < 150 and verse_text.endswith(('.', '!', '?')):
+                        print(f"  Skipping potential antiphon text in verse extraction: {verse_text[:50]}...")
                         skipped_first_section = True
                         continue
                 
@@ -1234,8 +1245,8 @@ class BBGRLSlideGeneratorV2:
                 "psalm_1": [{"speaker": "Priest", "text": ""}],
                 "antiphon_2": {"text": "", "format": "all_response"}, 
                 "canticle": [{"speaker": "Priest", "text": ""}],
-                "antiphon_3": {"text": "", "format": "all_response"},
-                "psalm_2": [{"speaker": "Priest", "text": ""}]
+                "antiphon_3": {"text": "", "format": "all_response", "psalm_title": "", "psalm_subtitle": ""},
+                "psalm_3": [{"speaker": "Priest", "text": ""}]
             }
         }
 
@@ -1304,9 +1315,10 @@ class BBGRLSlideGeneratorV2:
         slide_count = self._create_sacred_heart_hymns(prs, liturgical_data, slide_count)
         slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
         slide_count = self._create_post_communion_prayers(prs, liturgical_data, slide_count)
-        slide_count = self._create_transition_slides(prs, slide_count)
-        slide_count = self._create_jubilee_prayer(prs, liturgical_data, slide_count)
-        slide_count = self._create_st_joseph_prayer(prs, liturgical_data, slide_count)
+        # Commented out: These sections create placeholder/empty slides
+        # slide_count = self._create_transition_slides(prs, slide_count)
+        # slide_count = self._create_jubilee_prayer(prs, liturgical_data, slide_count)
+        # slide_count = self._create_st_joseph_prayer(prs, liturgical_data, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -1741,7 +1753,174 @@ class BBGRLSlideGeneratorV2:
         
         print(f"Created slide {slide_count}: Repeated Antiphon 2")
         
-        # TODO: Continue with Antiphon 3, Psalm 2, and remaining psalmody structure
+        # ========== ANTIPHON 3 and PSALM 3 ==========
+        
+        # Create Antiphon 3 slide (without psalm info)
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        antiphon_3 = liturgical_data['morning_prayer']['psalmody']['antiphon_3']
+        
+        # Create text box for Antiphon 3 with auto-fit
+        ant3_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+        ant3_frame = ant3_box.text_frame
+        ant3_frame.word_wrap = True
+        ant3_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        ant3_para = ant3_frame.paragraphs[0]
+        ant3_para.alignment = PP_ALIGN.CENTER
+        
+        # Add "(All) Ant. 3 " in blue
+        ant3_label = ant3_para.add_run()
+        ant3_label.text = "(All) Ant. 3 "
+        ant3_label.font.size = Pt(44)
+        ant3_label.font.name = "Georgia"
+        ant3_label.font.bold = True
+        ant3_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+        
+        # Add the antiphon text in black
+        ant3_text = ant3_para.add_run()
+        ant3_text.text = antiphon_3['text']
+        ant3_text.font.size = Pt(44)
+        ant3_text.font.name = "Georgia"
+        ant3_text.font.bold = True
+        ant3_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        print(f"Created slide {slide_count}: Antiphon 3")
+        
+        # Create separate slide for red psalm title and subtitle
+        if antiphon_3.get('psalm_title'):
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            psalm_info_box = slide.shapes.add_textbox(Inches(0.5), Inches(2), Inches(12.33), Inches(3.5))
+            psalm_info_frame = psalm_info_box.text_frame
+            psalm_info_frame.word_wrap = True
+            psalm_info_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            psalm_info_para = psalm_info_frame.paragraphs[0]
+            psalm_info_para.alignment = PP_ALIGN.CENTER
+            
+            # Add psalm title in red
+            psalm_title_run = psalm_info_para.add_run()
+            psalm_title_run.text = antiphon_3['psalm_title']
+            psalm_title_run.font.size = Pt(48)
+            psalm_title_run.font.name = "Georgia"
+            psalm_title_run.font.bold = True
+            psalm_title_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+            
+            # Add psalm subtitle in red italic if available
+            if antiphon_3.get('psalm_subtitle'):
+                psalm_info_para.add_run().text = "\n"
+                psalm_subtitle_run = psalm_info_para.add_run()
+                psalm_subtitle_run.text = antiphon_3['psalm_subtitle']
+                psalm_subtitle_run.font.size = Pt(36)
+                psalm_subtitle_run.font.name = "Georgia"
+                psalm_subtitle_run.font.italic = True
+                psalm_subtitle_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+            
+            print(f"Created slide {slide_count}: Psalm 3 Title and Subtitle")
+        
+        # Create Psalm 3 verses alternating priest/people
+        psalm_3_verses = liturgical_data['morning_prayer']['psalmody']['psalm_3']
+        
+        for verse in psalm_3_verses:
+            # Check if this is the "Glory to the Father" verse (skip it, we'll add it manually after)
+            if "Glory to the Father" in verse['text'] or "Glory to the father" in verse['text']:
+                # Skip this verse - we'll add Glory Be manually after all verses
+                print(f"  Skipping Glory Be verse from extraction (will add manually)")
+                continue
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Create text box for the verse content with auto-fit
+            content_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+            content_frame = content_box.text_frame
+            content_frame.word_wrap = True
+            content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+            
+            content_para = content_frame.paragraphs[0]
+            content_para.alignment = PP_ALIGN.LEFT
+            
+            if verse['speaker'] == "Priest":
+                # Priest slides: "Priest: " + text, all in red
+                priest_run = content_para.add_run()
+                priest_run.text = f"Priest: {verse['text']}"
+                priest_run.font.size = Pt(44)
+                priest_run.font.name = "Georgia"
+                priest_run.font.bold = True
+                priest_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+                print(f"Created slide {slide_count}: Psalm 3 - {verse['speaker']}")
+                
+            elif verse['speaker'] == "People":
+                # People slides: "People: " in blue, rest of text in black
+                people_label = content_para.add_run()
+                people_label.text = "People: "
+                people_label.font.size = Pt(44)
+                people_label.font.name = "Georgia"
+                people_label.font.bold = True
+                people_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+                
+                people_text = content_para.add_run()
+                people_text.text = verse['text']
+                people_text.font.size = Pt(44)
+                people_text.font.name = "Georgia"
+                people_text.font.bold = True
+                people_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                print(f"Created slide {slide_count}: Psalm 3 - {verse['speaker']}")
+        
+        # Add Glory Be after Psalm 3
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        glory_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+        glory_frame = glory_box.text_frame
+        glory_frame.word_wrap = True
+        glory_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        glory_para = glory_frame.paragraphs[0]
+        glory_para.alignment = PP_ALIGN.LEFT
+        
+        glory_run = glory_para.add_run()
+        glory_run.text = "Glory to the Father, and to the Son, and to the Holy Spirit: as it was in the beginning, is now, and will be for ever. Amen."
+        glory_run.font.size = Pt(44)
+        glory_run.font.name = "Georgia"
+        glory_run.font.bold = True
+        glory_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        print(f"Created slide {slide_count}: Psalm 3 - Glory Be")
+        
+        # Repeat Antiphon 3 after Psalm 2 verses and Glory Be
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        # Create text box for the repeated antiphon with auto-fit
+        ant3_repeat_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+        ant3_repeat_frame = ant3_repeat_box.text_frame
+        ant3_repeat_frame.word_wrap = True
+        ant3_repeat_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        
+        ant3_repeat_para = ant3_repeat_frame.paragraphs[0]
+        ant3_repeat_para.alignment = PP_ALIGN.CENTER
+        
+        # Add "(All) Ant. 3 " in blue
+        ant3_repeat_label = ant3_repeat_para.add_run()
+        ant3_repeat_label.text = "(All) Ant. 3 "
+        ant3_repeat_label.font.size = Pt(44)
+        ant3_repeat_label.font.name = "Georgia"
+        ant3_repeat_label.font.bold = True
+        ant3_repeat_label.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)  # Blue
+        
+        # Add the antiphon text in black
+        ant3_repeat_text = ant3_repeat_para.add_run()
+        ant3_repeat_text.text = antiphon_3['text']
+        ant3_repeat_text.font.size = Pt(44)
+        ant3_repeat_text.font.name = "Georgia"
+        ant3_repeat_text.font.bold = True
+        ant3_repeat_text.font.color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        print(f"Created slide {slide_count}: Repeated Antiphon 3")
         
         return slide_count
 
