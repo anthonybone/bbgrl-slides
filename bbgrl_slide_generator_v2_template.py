@@ -1109,18 +1109,79 @@ class BBGRLSlideGeneratorV2:
         }
 
     def _extract_short_reading(self, text):
-        """Extract short reading text"""
-        reading_patterns = [
-            r'Reading[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,3}\.)',
-            r'Short Reading[:\s]*([A-Z][^.]+(?:\.[^.]*?){1,3}\.)'
-        ]
+        """Extract short reading text - find first instance of READING (after PSALMODY) up to RESPONSORY
         
-        for pattern in reading_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+        The structure is:
+        READING[citation][reading text]RESPONSORY
         
-        return "[Short reading for today]"
+        We need to extract everything from READING to just before RESPONSORY.
+        Note: There may be multiple READINGs (alternative options), so we take the first one
+        that has a RESPONSORY following it.
+        """
+        try:
+            # Find all instances of READING (case-insensitive)
+            reading_matches = list(re.finditer(r'READING', text, re.IGNORECASE))
+            
+            if not reading_matches:
+                print("  ⚠ No READING marker found")
+                return {"citation": "", "text": ""}
+            
+            # Find the first READING that has a RESPONSORY after it
+            # (skip introductory text or readings that don't have responsory)
+            reading_start = None
+            for match in reading_matches:
+                test_start = match.end()
+                # Check if RESPONSORY follows within reasonable distance (< 1000 chars)
+                responsory_test = re.search(r'RESPONSORY', text[test_start:test_start+1000], re.IGNORECASE)
+                if responsory_test:
+                    reading_start = test_start
+                    break
+            
+            if reading_start is None:
+                print("  ⚠ No READING with RESPONSORY found")
+                return {"citation": "", "text": ""}
+            
+            # Find RESPONSORY after the last READING
+            responsory_match = re.search(r'RESPONSORY', text[reading_start:], re.IGNORECASE)
+            
+            if not responsory_match:
+                print("  ⚠ No RESPONSORY marker found after READING")
+                return {"citation": "", "text": ""}
+            
+            # Extract the reading section
+            reading_end = reading_start + responsory_match.start()
+            reading_section = text[reading_start:reading_end].strip()
+            
+            # The reading section format is typically:
+            # [Optional category like "[Pastors]"][Citation like "Hebrews 13:7-9a"][Reading text]
+            # Try to separate citation from text
+            
+            # First, remove any category prefix in square brackets (e.g., "[Pastors]")
+            reading_section = re.sub(r'^\[.*?\]\s*', '', reading_section)
+            
+            # Look for a book name followed by chapter:verse pattern at the start
+            # Book names can be: single word (Genesis, Mark), two words (1 Corinthians), or abbreviations
+            citation_match = re.match(r'^([1-3]?\s*[A-Za-z]+\s+\d+:\d+[a-z]?(?:-\d+[a-z]?)?)', reading_section)
+            
+            if citation_match:
+                citation = citation_match.group(1).strip()
+                reading_text = reading_section[citation_match.end():].strip()
+            else:
+                # No clear citation found, treat entire section as text
+                citation = ""
+                reading_text = reading_section
+            
+            print(f"  Found READING: {citation}")
+            print(f"    Text preview: {reading_text[:100]}...")
+            
+            return {
+                "citation": citation,
+                "text": reading_text
+            }
+            
+        except Exception as e:
+            print(f"  ⚠ Error extracting short reading: {e}")
+            return {"citation": "", "text": ""}
 
     def _extract_responsory(self, text):
         """Extract responsory text"""
@@ -1926,9 +1987,63 @@ class BBGRLSlideGeneratorV2:
 
     # Additional section creation methods would follow the same pattern...
     def _create_reading_section(self, prs, liturgical_data, slide_count):
-        """Create reading section following reference template"""
-        # Implementation would follow reference structure
-        return slide_count + 6  # Placeholder
+        """Create reading section with READING title and content on same slide
+        
+        Structure:
+        - Single slide with "READING" title at top and content below
+        """
+        # Get reading data
+        reading_data = liturgical_data.get('morning_prayer', {}).get('reading', {}).get('short_reading', {})
+        
+        if not reading_data or not reading_data.get('text'):
+            print(f"  ⚠ No reading data available, skipping reading section")
+            return slide_count
+        
+        # Create single slide with title and content
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        
+        # Add "READING" title at top
+        title_box = slide.shapes.add_textbox(
+            Inches(1), Inches(0.5), Inches(11.33), Inches(1)
+        )
+        title_frame = title_box.text_frame
+        title_frame.word_wrap = True
+        title_frame.text = "READING"
+        
+        # Format title
+        for paragraph in title_frame.paragraphs:
+            paragraph.alignment = PP_ALIGN.CENTER
+            for run in paragraph.runs:
+                run.font.size = Pt(48)
+                run.font.bold = True
+                run.font.color.rgb = self.reference_template['formatting_rules']['title_color']
+        
+        # Build content text
+        content_text = ""
+        if reading_data.get('citation'):
+            content_text = f"{reading_data['citation']}\n\n"
+        content_text += reading_data['text']
+        
+        # Add content text below title
+        text_box = slide.shapes.add_textbox(
+            Inches(0.5), Inches(1.75), Inches(12.33), Inches(5)
+        )
+        text_frame = text_box.text_frame
+        text_frame.word_wrap = True
+        text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        text_frame.text = content_text
+        
+        # Format content
+        for paragraph in text_frame.paragraphs:
+            paragraph.alignment = PP_ALIGN.CENTER
+            for run in paragraph.runs:
+                run.font.size = Pt(30)
+                run.font.color.rgb = RGBColor(0, 0, 0)
+        
+        print(f"Created slide {slide_count}: READING (title + content)")
+        
+        return slide_count
 
     def _create_gospel_canticle_section(self, prs, liturgical_data, slide_count):
         """Create gospel canticle section following reference template"""
