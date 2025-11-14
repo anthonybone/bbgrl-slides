@@ -2548,6 +2548,101 @@ class BBGRLSlideGeneratorV2:
             
             print(f"Created slide {slide_count}: GOSPEL CANTICLE (with header and antiphon)")
             
+            # Add Canticle of Zechariah title slide (red text, hard-coded)
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add the three lines of red text, centered
+            canticle_left = Inches(0.5)
+            canticle_top = Inches(2.5)
+            canticle_width = Inches(12.33)
+            canticle_height = Inches(3)
+            
+            canticle_box = slide.shapes.add_textbox(canticle_left, canticle_top, canticle_width, canticle_height)
+            canticle_frame = canticle_box.text_frame
+            canticle_frame.word_wrap = True
+            
+            # Line 1: "Canticle of Zechariah"
+            p1 = canticle_frame.paragraphs[0]
+            p1.text = "Canticle of Zechariah"
+            p1.alignment = PP_ALIGN.CENTER
+            p1.font.size = Pt(44)
+            p1.font.name = 'Georgia'
+            p1.font.bold = True
+            p1.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+            
+            # Line 2: "Luke 1:68-79"
+            p2 = canticle_frame.add_paragraph()
+            p2.text = "Luke 1:68-79"
+            p2.alignment = PP_ALIGN.CENTER
+            p2.font.size = Pt(44)
+            p2.font.name = 'Georgia'
+            p2.font.bold = True
+            p2.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+            
+            # Line 3: "The Messiah and his forerunner"
+            p3 = canticle_frame.add_paragraph()
+            p3.text = "The Messiah and his forerunner"
+            p3.alignment = PP_ALIGN.CENTER
+            p3.font.size = Pt(44)
+            p3.font.name = 'Georgia'
+            p3.font.bold = True
+            p3.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+            
+            print(f"Created slide {slide_count}: Canticle of Zechariah (title)")
+            
+            # Add 9 Benedictus verse slides (alternating red/black text)
+            benedictus_verses = [
+                # Slide 1 - RED
+                "Blessed + be the Lord, the God of Israel; *\nhe has come to his people and set them free.",
+                # Slide 2 - BLACK
+                "He has raised up for us a mighty savior,*\nborn of the house of his servant David.",
+                # Slide 3 - RED
+                "Through his holy prophets he promised of old †\nthat he would save us from our enemies, *\nfrom the hands of all who hate us.",
+                # Slide 4 - BLACK
+                "He promised to show mercy to our fathers *\nand to remember his holy covenant.",
+                # Slide 5 - RED
+                "This was the oath he swore to our father Abraham: *\nto set us free from the hands of our enemies,\nfree to worship him without fear, *\nholy and righteous in his sight\n  all the days of our life.",
+                # Slide 6 - BLACK
+                "You, my child, shall be called the prophet of the Most High; *\nfor you will go before the Lord to prepare his way,\nto give his people knowledge of salvation *\nby the forgiveness of their sins.",
+                # Slide 7 - RED
+                "In the tender compassion of our God *\nthe dawn from on high shall break upon us,\nto shine on those who dwell in darkness and the shadow of death, *\nand to guide our feet into the way of peace.",
+                # Slide 8 - BLACK
+                "Glory to the Father, and to the Son, *\nand to the Holy Spirit:",
+                # Slide 9 - RED
+                "as it was in the beginning, is now, *\nand will be forever. Amen."
+            ]
+            
+            for i, verse_text in enumerate(benedictus_verses):
+                slide_count += 1
+                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+                
+                # Determine color: odd slides (1,3,5,7,9) are red, even (2,4,6,8) are black
+                is_red = (i % 2 == 0)
+                text_color = RGBColor(0x98, 0x00, 0x00) if is_red else RGBColor(0, 0, 0)
+                color_name = "red" if is_red else "black"
+                
+                # Create textbox with auto-fit for maximum text size
+                verse_left = Inches(0.5)
+                verse_top = Inches(1)
+                verse_width = Inches(12.33)
+                verse_height = Inches(5.5)
+                
+                verse_box = slide.shapes.add_textbox(verse_left, verse_top, verse_width, verse_height)
+                verse_frame = verse_box.text_frame
+                verse_frame.word_wrap = True
+                verse_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+                
+                verse_p = verse_frame.paragraphs[0]
+                verse_p.text = verse_text
+                verse_p.alignment = PP_ALIGN.LEFT
+                verse_p.font.size = Pt(44)  # Starting size, will auto-fit larger if possible
+                verse_p.font.name = 'Georgia'
+                verse_p.font.bold = True
+                verse_p.font.color.rgb = text_color
+                
+                print(f"Created slide {slide_count}: Benedictus verse {i+1} ({color_name})")
+            
             return slide_count
             
         except Exception as e:
