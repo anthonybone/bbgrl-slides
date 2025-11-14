@@ -394,10 +394,7 @@ class BBGRLSlideGeneratorV2:
                     "antiphon": self._extract_gospel_antiphon(text_after_psalmody),
                     "benedictus_verses": self._extract_benedictus_verses(text_after_psalmody)
                 },
-                "intercessions": {
-                    "intercessions": self._extract_intercessions(text_after_psalmody),
-                    "concluding_prayer": self._extract_concluding_prayer(text_after_psalmody)
-                }
+                "intercessions": self._extract_intercessions(soup, full_text)
             }
             
             return structured
@@ -2686,10 +2683,267 @@ class BBGRLSlideGeneratorV2:
             traceback.print_exc()
             return slide_count
 
+    def _extract_intercessions(self, soup, text):
+        """Extract intercessions section from liturgical text"""
+        try:
+            # Find INTERCESSIONS markers - there may be multiple instances
+            # We want the one AFTER the Gospel Canticle
+            # Work with the HTML (from soup) not the plain text
+            html_content = str(soup)
+            
+            intercessions_matches = list(re.finditer(r'INTERCESSIONS', html_content, re.IGNORECASE))
+            
+            if not intercessions_matches:
+                print("  ⚠ No INTERCESSIONS marker found")
+                return []
+            
+            # Use the LAST instance (after Gospel Canticle)
+            intercessions_pos = intercessions_matches[-1].start()
+            html_from_intercessions = html_content[intercessions_pos:]
+            
+            # Extract until THE LORD'S PRAYER or Let us pray
+            end_match = re.search(r'THE LORD.S PRAYER|Let us pray\.', html_from_intercessions, re.IGNORECASE)
+            if end_match:
+                intercessions_section = html_from_intercessions[:end_match.start()]
+            else:
+                intercessions_section = html_from_intercessions[:3000]
+            
+            print(f"  Found INTERCESSIONS section ({len(intercessions_section)} chars)")
+            
+            # Parse the intercessions structure
+            # Structure can have category markers like [Martyrs] or [Pastors]
+            intercessions_groups = []
+            
+            # Split by category markers if present
+            category_pattern = r'\[(Martyrs|Pastors|Doctors|Virgins|Holy Men and Women)\]'
+            parts = re.split(category_pattern, intercessions_section, flags=re.IGNORECASE)
+            
+            # If no categories, treat as single group
+            if len(parts) == 1:
+                intercessions_groups.append({'category': None, 'text': parts[0]})
+            else:
+                # Skip first part (before any category)
+                for i in range(1, len(parts), 2):
+                    if i + 1 < len(parts):
+                        category = parts[i]
+                        text_content = parts[i + 1]
+                        intercessions_groups.append({'category': category, 'text': text_content})
+            
+            # Parse each group
+            all_intercessions = []
+            for group in intercessions_groups:
+                group_text = group['text']
+                category = group['category']
+                
+                # Find introduction (text before first "Nourish" or "You redeemed")
+                intro_match = re.search(r'(.*?)(?=Nourish your people|You redeemed us)', group_text, re.DOTALL | re.IGNORECASE)
+                if intro_match:
+                    introduction = intro_match.group(1).strip()
+                    # Clean up introduction - remove HTML tags and INTERCESSIONS text
+                    introduction = re.sub(r'INTERCESSIONS', '', introduction, flags=re.IGNORECASE).strip()
+                    introduction = re.sub(r'<[^>]+>', '', introduction).strip()  # Remove all HTML tags
+                    # Get text after introduction for intention extraction
+                    intentions_text = group_text[intro_match.end():]
+                else:
+                    introduction = ""
+                    intentions_text = group_text
+                
+                # Find response line (All)
+                response_match = re.search(r'(Nourish your people, Lord\.|You redeemed us by your blood\.)', group_text, re.IGNORECASE)
+                response_line = response_match.group(1) if response_match else ""
+                
+                # Find all prayer intentions (lines with em dash)
+                # Each intention has a petition line followed by em dash and response
+                # Structure in HTML: [petition]<span class="rubrica">—</span>[response]<br><em>Response line</em>
+                # We capture up to but not including the italicized response repeat
+                
+                # First, remove the italicized response lines from the text (both in <em> tags and plain)
+                cleaned_text = re.sub(r'<em>\s*(Nourish your people, Lord\.|You redeemed us by your blood\.)\s*</em>', '', intentions_text, flags=re.IGNORECASE)
+                
+                # Remove standalone response lines that appear between intentions
+                cleaned_text = re.sub(r'(Nourish your people, Lord\.|You redeemed us by your blood\.)', '', cleaned_text, flags=re.IGNORECASE)
+                
+                # Replace the rubrica em dash spans with plain em dash for easier matching
+                cleaned_text = re.sub(r'<span class="rubrica">—</span>', '—', cleaned_text, flags=re.IGNORECASE)
+                
+                # Remove <br> and <br/> tags which interfere with pattern matching
+                cleaned_text = re.sub(r'<br\s*/?>', ' ', cleaned_text, flags=re.IGNORECASE)
+                
+                # Remove any remaining HTML tags (including leftover </em>, <em>, etc.)
+                cleaned_text = re.sub(r'<[^>]+>', ' ', cleaned_text, flags=re.IGNORECASE)
+                
+                # Now extract intentions with em dash pattern
+                # Pattern: [petition text (no < or —)]—[response text (no < except maybe br)]
+                intention_pattern = r'([^—<]+?)—\s*([^<]+?)\.'
+                intentions = []
+                
+                for match in re.finditer(intention_pattern, cleaned_text):
+                    petition = match.group(1).strip()
+                    response = match.group(2).strip()
+                    
+                    # Skip if petition is too short (likely noise)
+                    if len(petition) < 20:
+                        continue
+                    
+                    # Skip if petition contains the main response line (this would be noise/duplication)
+                    if re.search(r'Nourish your people|You redeemed us|INTERCESSIONS', petition, re.IGNORECASE):
+                        continue
+                    
+                    # Clean petition: remove any leading/trailing HTML or punctuation
+                    petition = re.sub(r'<[^>]+>', '', petition).strip()
+                    petition = re.sub(r'^\s*[,\s]+', '', petition).strip()
+                    
+                    # Clean response: remove any HTML tags and normalize whitespace
+                    response = re.sub(r'<[^>]+>', '', response).strip()
+                    response = re.sub(r'\s+', ' ', response).strip()
+                    
+                    # Add period back
+                    if response and not response.endswith('.'):
+                        response += '.'
+                    
+                    if petition and response:  # Only add if we have both valid petition and response
+                        intentions.append({
+                            'petition': petition,
+                            'response': response
+                        })
+                
+                if introduction or intentions:
+                    all_intercessions.append({
+                        'category': category,
+                        'introduction': introduction,
+                        'response_line': response_line,
+                        'intentions': intentions
+                    })
+            
+            print(f"  Extracted {len(all_intercessions)} intercession group(s)")
+            for i, group in enumerate(all_intercessions):
+                print(f"    Group {i+1}: {group['category'] or 'Default'}, {len(group['intentions'])} intentions")
+            
+            return all_intercessions
+            
+        except Exception as e:
+            print(f"  ⚠ Error extracting intercessions: {e}")
+            traceback.print_exc()
+            return []
+
     def _create_intercessions_section(self, prs, liturgical_data, slide_count):
         """Create intercessions section following reference template"""
-        # Implementation would follow reference structure
-        return slide_count + 9  # Placeholder
+        try:
+            intercessions_data = liturgical_data['morning_prayer'].get('intercessions', [])
+            
+            if not intercessions_data:
+                print("  No intercessions data available")
+                return slide_count
+            
+            # Slide 1: INTERCESSIONS title
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            # Title text
+            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(3), Inches(12.33), Inches(1.5))
+            title_frame = title_box.text_frame
+            title_frame.word_wrap = True
+            title_para = title_frame.paragraphs[0]
+            title_para.alignment = PP_ALIGN.CENTER
+            
+            title_run = title_para.add_run()
+            title_run.text = "INTERCESSIONS"
+            title_run.font.name = "Georgia"
+            title_run.font.size = Pt(48)
+            title_run.font.bold = True
+            title_run.font.color.rgb = RGBColor(0, 51, 102)  # Dark blue
+            
+            print(f"Created slide {slide_count}: INTERCESSIONS (title)")
+            
+            # Process each intercession group
+            for group in intercessions_data:
+                category = group.get('category')
+                introduction = group.get('introduction', '')
+                response_line = group.get('response_line', '')
+                intentions = group.get('intentions', [])
+                
+                # Slide 2: Introduction + (All) Response
+                slide_count += 1
+                slide = prs.slides.add_slide(prs.slide_layouts[6])
+                
+                content_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+                content_frame = content_box.text_frame
+                content_frame.word_wrap = True
+                content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+                
+                content_para = content_frame.paragraphs[0]
+                content_para.alignment = PP_ALIGN.CENTER
+                
+                # Introduction text (black)
+                if introduction:
+                    intro_run = content_para.add_run()
+                    intro_run.text = introduction
+                    intro_run.font.name = "Georgia"
+                    intro_run.font.size = Pt(30)
+                    intro_run.font.bold = True
+                    intro_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                
+                # Add spacing
+                if introduction and response_line:
+                    spacing_run = content_para.add_run()
+                    spacing_run.text = "\n\n"
+                    spacing_run.font.size = Pt(20)
+                
+                # Response line - (All) label in purple, text in purple
+                if response_line:
+                    all_label_run = content_para.add_run()
+                    all_label_run.text = "(All) "
+                    all_label_run.font.name = "Georgia"
+                    all_label_run.font.size = Pt(30)
+                    all_label_run.font.bold = True
+                    all_label_run.font.color.rgb = RGBColor(100, 0, 100)  # Purple
+                    
+                    response_run = content_para.add_run()
+                    response_run.text = response_line
+                    response_run.font.name = "Georgia"
+                    response_run.font.size = Pt(30)
+                    response_run.font.bold = True
+                    response_run.font.color.rgb = RGBColor(100, 0, 100)  # Purple
+                
+                print(f"Created slide {slide_count}: Intercessions Introduction{' - ' + category if category else ''}")
+                
+                # Slides for each intention
+                for intention in intentions:
+                    slide_count += 1
+                    slide = prs.slides.add_slide(prs.slide_layouts[6])
+                    
+                    intention_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+                    intention_frame = intention_box.text_frame
+                    intention_frame.word_wrap = True
+                    intention_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+                    
+                    intention_para = intention_frame.paragraphs[0]
+                    intention_para.alignment = PP_ALIGN.CENTER
+                    
+                    # Petition text (black)
+                    petition_run = intention_para.add_run()
+                    petition_run.text = intention['petition']
+                    petition_run.font.name = "Georgia"
+                    petition_run.font.size = Pt(30)
+                    petition_run.font.bold = True
+                    petition_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                    
+                    # Em dash response (on new line, black)
+                    dash_run = intention_para.add_run()
+                    dash_run.text = "\n— " + intention['response']
+                    dash_run.font.name = "Georgia"
+                    dash_run.font.size = Pt(30)
+                    dash_run.font.bold = True
+                    dash_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+                    
+                    print(f"Created slide {slide_count}: Intercession Intention")
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  ⚠ Error creating intercessions section: {e}")
+            traceback.print_exc()
+            return slide_count
 
     def _create_sacred_heart_hymns(self, prs, liturgical_data, slide_count):
         """Create static sacred heart hymns following reference template"""
