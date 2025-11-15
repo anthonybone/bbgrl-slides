@@ -1,128 +1,207 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BBGRL Slides Generator</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
-    .card { max-width: 720px; margin: 0 auto; border: 1px solid #ddd; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
-    h1 { margin-top: 0; font-size: 1.6rem; }
-    label { display: block; margin: 0.5rem 0; font-weight: 600; }
-    input[type="date"] { padding: 0.5rem; font-size: 1rem; }
-    button { padding: 0.6rem 1rem; font-size: 1rem; border-radius: 8px; border: 1px solid #0b5ed7; background: #0d6efd; color: #fff; cursor: pointer; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .progress { margin-top: 1rem; height: 20px; background: #f1f3f5; border-radius: 10px; overflow: hidden; }
-    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #4dabf7, #1c7ed6); transition: width 0.3s ease; }
-    .status { margin-top: 0.5rem; color: #333; font-size: 0.95rem; }
-    .row { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
-    .hidden { display: none; }
-    .error { color: #d6336c; font-weight: 600; margin-top: 0.5rem; }
-    .success { color: #2b8a3e; font-weight: 600; margin-top: 0.5rem; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>BBGRL Slides Generator</h1>
-    <p>Generate PowerPoint slides for a specific date. Works entirely on your computer.</p>
-
-    <form id="form">
-      <label for="date">Select date</label>
-      <div class="row">
-        <input id="date" name="date" type="date" required />
-        <button id="startBtn" type="submit">Generate Slides</button>
-      </div>
-    </form>
-
-    <div id="progressArea" class="hidden">
-      <div class="progress"><div id="bar" class="bar"></div></div>
-      <div id="status" class="status">Waiting to start…</div>
-      <div id="error" class="error hidden"></div>
-      <div id="success" class="success hidden"></div>
-      <div id="downloadArea" class="row hidden">
-        <a id="downloadLink" href="#"><button type="button">Download PowerPoint</button></a>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const form = document.getElementById('form');
-    const dateInput = document.getElementById('date');
-    const startBtn = document.getElementById('startBtn');
-    const progressArea = document.getElementById('progressArea');
-    const bar = document.getElementById('bar');
-    const status = document.getElementById('status');
-    const errorBox = document.getElementById('error');
-    const successBox = document.getElementById('success');
-    const downloadArea = document.getElementById('downloadArea');
-    const downloadLink = document.getElementById('downloadLink');
-
-    let pollTimer = null;
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const date = dateInput.value;
-      if (!date) return;
-
-      startBtn.disabled = true;
-      progressArea.classList.remove('hidden');
-      errorBox.classList.add('hidden');
-      successBox.classList.add('hidden');
-      downloadArea.classList.add('hidden');
-      bar.style.width = '0%';
-      status.textContent = 'Starting…';
-
-      try {
-        const res = await fetch('/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ date })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to start job');
-        const jobId = data.job_id;
-        poll(jobId);
-      } catch (err) {
-        errorBox.textContent = err.message;
-        errorBox.classList.remove('hidden');
-        startBtn.disabled = false;
-      }
-    });
-
-    async function poll(jobId) {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(async () => {
-        try {
-          const res = await fetch(`/status/${jobId}`);
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Status error');
-          bar.style.width = `${data.percent || 0}%`;
-          status.textContent = data.message || '';
-
-          if (data.done) {
-            clearInterval(pollTimer);
-            if (data.error) {
-              errorBox.textContent = data.error;
-              errorBox.classList.remove('hidden');
-              startBtn.disabled = false;
-            } else {
-              successBox.textContent = 'Generation complete!';
-              successBox.classList.remove('hidden');
-              if (data.download_url) {
-                downloadLink.href = data.download_url;
-                downloadArea.classList.remove('hidden');
-              }
-              startBtn.disabled = false;
-            }
-          }
-        } catch (err) {
-          clearInterval(pollTimer);
-          errorBox.textContent = err.message;
-          errorBox.classList.remove('hidden');
-          startBtn.disabled = false;
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BBGRL Slides Generator</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            margin: 2rem;
         }
-      }, 1000);
-    }
-  </script>
+
+        .card {
+            max-width: 720px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.6rem;
+        }
+
+        label {
+            display: block;
+            margin: 0.5rem 0;
+            font-weight: 600;
+        }
+
+        input[type="date"] {
+            padding: 0.5rem;
+            font-size: 1rem;
+        }
+
+        button {
+            padding: 0.6rem 1rem;
+            font-size: 1rem;
+            border-radius: 8px;
+            border: 1px solid #0b5ed7;
+            background: #0d6efd;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .progress {
+            margin-top: 1rem;
+            height: 20px;
+            background: #f1f3f5;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4dabf7, #1c7ed6);
+            transition: width 0.3s ease;
+        }
+
+        .status {
+            margin-top: 0.5rem;
+            color: #333;
+            font-size: 0.95rem;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 0.75rem;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error {
+            color: #d6336c;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .success {
+            color: #2b8a3e;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>BBGRL Slides Generator</h1>
+        <p>Generate PowerPoint slides for a specific date. Works entirely on your computer.</p>
+
+        <form id="form">
+            <label for="date">Select date</label>
+            <div class="row">
+                <input id="date" name="date" type="date" required />
+                <button id="startBtn" type="submit">Generate Slides</button>
+            </div>
+        </form>
+
+        <div id="progressArea" class="hidden">
+            <div class="progress">
+                <div id="bar" class="bar"></div>
+            </div>
+            <div id="status" class="status">Waiting to start…</div>
+            <div id="error" class="error hidden"></div>
+            <div id="success" class="success hidden"></div>
+            <div id="downloadArea" class="row hidden">
+                <a id="downloadLink" href="#"><button type="button">Download PowerPoint</button></a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('form');
+        const dateInput = document.getElementById('date');
+        const startBtn = document.getElementById('startBtn');
+        const progressArea = document.getElementById('progressArea');
+        const bar = document.getElementById('bar');
+        const status = document.getElementById('status');
+        const errorBox = document.getElementById('error');
+        const successBox = document.getElementById('success');
+        const downloadArea = document.getElementById('downloadArea');
+        const downloadLink = document.getElementById('downloadLink');
+
+        let pollTimer = null;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const date = dateInput.value;
+            if (!date) return;
+
+            startBtn.disabled = true;
+            progressArea.classList.remove('hidden');
+            errorBox.classList.add('hidden');
+            successBox.classList.add('hidden');
+            downloadArea.classList.add('hidden');
+            bar.style.width = '0%';
+            status.textContent = 'Starting…';
+
+            try {
+                const res = await fetch('/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ date })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to start job');
+                const jobId = data.job_id;
+                poll(jobId);
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.remove('hidden');
+                startBtn.disabled = false;
+            }
+        });
+
+        async function poll(jobId) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch(`/status/${jobId}`);
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Status error');
+                    bar.style.width = `${data.percent || 0}%`;
+                    status.textContent = data.message || '';
+
+                    if (data.done) {
+                        clearInterval(pollTimer);
+                        if (data.error) {
+                            errorBox.textContent = data.error;
+                            errorBox.classList.remove('hidden');
+                            startBtn.disabled = false;
+                        } else {
+                            successBox.textContent = 'Generation complete!';
+                            successBox.classList.remove('hidden');
+                            if (data.download_url) {
+                                downloadLink.href = data.download_url;
+                                downloadArea.classList.remove('hidden');
+                            }
+                            startBtn.disabled = false;
+                        }
+                    }
+                } catch (err) {
+                    clearInterval(pollTimer);
+                    errorBox.textContent = err.message;
+                    errorBox.classList.remove('hidden');
+                    startBtn.disabled = false;
+                }
+            }, 1000);
+        }
+    </script>
 </body>
+
 </html>
