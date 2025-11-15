@@ -2447,6 +2447,9 @@ class BBGRLSlideGeneratorV2:
 
         # Add Novena of Confidence slides at the very end
         slide_count = self._create_novena_of_confidence_slides(prs, slide_count)
+
+        # Add Novena Prayer slides at the very end
+        slide_count = self._create_novena_prayer_slides(prs, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -2988,6 +2991,94 @@ class BBGRLSlideGeneratorV2:
             return slide_count
         except Exception as e:
             print(f"  WARNING: Error creating Novena of Confidence slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_novena_prayer_slides(self, prs, slide_count):
+        """Create five 'NOVENA PRAYER' slides appended at end.
+
+        Slide 1: Header 'NOVENA PRAYER:' in red + first paragraph line.
+        Slides 2-5: Black text only, centered, Georgia 44pt bold.
+        """
+        try:
+            slides = [
+                {"header": "NOVENA PRAYER:", "lines": [
+                    "O most holy Heart of Jesus, fountain of every blessing, I adore You, I love You, and with a lively sorrow for my sins,"
+                ]},
+                {"lines": [
+                    "I offer You this poor heart of mine. Make me humble, patient, pure and wholly obedient to Your will. Grant, good Jesus that I may live in You and for You."
+                ]},
+                {"lines": [
+                    "Protect me in the midst of danger; comfort me in my afflictions; give me health of body, assistance in my temporal needs, Your blessing on all that I do, and the grace of a holy death.......",
+                    "Our Father…. Hail Mary.... Glory be to the Father....."
+                ]},
+                {"lines": [
+                    "(Priest) Let us Pray,",
+                    "Heavenly Father, we rejoice in the gifts of love we have received from the Heart of Jesus, your Son."
+                ]},
+                {"lines": [
+                    "Open our hearts to share His life and continue to bless us with His love. We ask this in the name of Jesus the Lord.",
+                    "AMEN."
+                ]}
+            ]
+
+            for idx, data in enumerate(slides, start=1):
+                slide_count += 1
+                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+                box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.33), Inches(6.5))
+                frame = box.text_frame
+                frame.word_wrap = True
+                frame.vertical_anchor = MSO_ANCHOR.TOP
+
+                if data.get("header"):
+                    header_para = frame.paragraphs[0]
+                    header_para.alignment = PP_ALIGN.CENTER
+                    run = header_para.add_run()
+                    run.text = data["header"]
+                    run.font.name = "Georgia"
+                    run.font.size = Pt(54)
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+                    spacer = frame.add_paragraph()
+                    spacer.text = ""
+                    spacer.alignment = PP_ALIGN.CENTER
+                else:
+                    first_para = frame.paragraphs[0]
+                    first_para.alignment = PP_ALIGN.CENTER
+                    run = first_para.add_run()
+                    run.text = data["lines"][0]
+                    run.font.name = "Georgia"
+                    run.font.size = Pt(44)
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0, 0, 0)
+                    for line in data["lines"][1:]:
+                        p = frame.add_paragraph()
+                        p.alignment = PP_ALIGN.CENTER
+                        r = p.add_run()
+                        r.text = line
+                        r.font.name = "Georgia"
+                        r.font.size = Pt(44)
+                        r.font.bold = True
+                        r.font.color.rgb = RGBColor(0, 0, 0)
+
+                if data.get("header"):
+                    for line in data["lines"]:
+                        p = frame.add_paragraph()
+                        p.alignment = PP_ALIGN.CENTER
+                        r = p.add_run()
+                        r.text = line
+                        r.font.name = "Georgia"
+                        r.font.size = Pt(44)
+                        r.font.bold = True
+                        r.font.color.rgb = RGBColor(0, 0, 0)
+
+                print(f"Created slide {slide_count}: Novena Prayer ({idx}/5)")
+
+            return slide_count
+        except Exception as e:
+            print(f"  WARNING: Error creating Novena Prayer slides: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
