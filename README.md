@@ -22,6 +22,22 @@ This program automatically generates PowerPoint slides for daily Catholic Mass w
 
 ## Usage
 
+### Command-line Generation (new)
+- Generate a slides deck for a specific date and save it into `new_slides/` with the required filename format `olph_slides_[MM]_[DD]_[YYYY].pptx`.
+
+```bash
+# Syntax (MM-DD-YYYY)
+python bbgrl_slide_generator_v1.py 11-15-2025
+
+# Output
+# new_slides/olph_slides_11_15_2025.pptx
+```
+
+- Notes:
+  - Date argument is required in the format `MM-DD-YYYY` (strict).
+  - The script fetches Morning Prayer and Daily Readings live from iBreviary and assembles the full deck.
+  - Ensure dependencies are installed (`pip install -r requirements.txt`) and Chrome is available for Selenium.
+
 ### Basic Usage
 ```bash
 python enhanced_slide_generator.py
