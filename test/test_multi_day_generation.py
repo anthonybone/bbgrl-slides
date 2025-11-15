@@ -3,17 +3,18 @@ Test script to generate slides for multiple consecutive days
 Verifies that Selenium-based date navigation retrieves unique content for each day
 """
 
-from bbgrl_slide_generator_v2_template import BBGRLSlideGeneratorV2
 from datetime import datetime, timedelta
 
+
 def main():
+    from bbgrl_slide_generator_v1 import bbgrlslidegeneratorv1
     print("=" * 70)
     print("Multi-Day Slide Generation Test")
     print("=" * 70)
     print("This will generate slides for 3 consecutive days using Selenium navigation")
     print("to verify that iBreviary returns unique content for each date.\n")
     
-    generator = BBGRLSlideGeneratorV2()
+    generator = bbgrlslidegeneratorv1()
     
     # Generate slides for 3 consecutive days
     start_date = datetime(2025, 11, 10)
@@ -47,6 +48,11 @@ def main():
     print("Multi-day generation test complete!")
     print(f"{'=' * 70}")
     print("\nCheck the output_v2 folder to verify that each presentation has unique content.")
+
+def test_integration_manual():
+    import pytest
+    pytest.skip("Integration script; run directly: python -m test.test_multi_day_generation")
+
 
 if __name__ == "__main__":
     main()

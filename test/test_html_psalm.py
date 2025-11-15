@@ -1,55 +1,45 @@
-"""Test HTML-based psalm extraction"""
-from bs4 import BeautifulSoup
+"""Parser-level HTML extraction tests using local debug fixtures."""
+
+import os
 import re
+from bs4 import BeautifulSoup
+from bbgrl.generator import (
+    extract_psalm_verses_from_html,
+    extract_canticle_info,
+    extract_intercessions_html,
+)
 
-# Load the debug HTML file
-with open('debug_morning_prayer.html', 'r', encoding='utf-8') as f:
-    html = f.read()
 
-soup = BeautifulSoup(html, 'html.parser')
+def _load_fixture(path: str) -> str:
+    with open(path, 'r', encoding='utf-8') as f:
+        return f.read()
 
-# Find Ant. 1
-ant_1 = soup.find('span', class_='rubrica', string=re.compile(r'Ant\.\s*1'))
-if ant_1:
-    print("Found Ant. 1")
-    print(f"Ant. 1 text: {ant_1.get_text()}")
-    
-    # Get the next few siblings
-    current = ant_1
-    count = 0
-    print("\nNext 10 siblings:")
-    while current and count < 10:
-        current = current.find_next_sibling()
-        if current:
-            count += 1
-            print(f"{count}. Tag: {current.name}, Class: {current.get('class')}, Text: {current.get_text()[:100]}")
-            
-    # Now try to collect text until next Ant or Glory
-    print("\n\nCollecting psalm text:")
-    current = ant_1
-    psalm_parts = []
-    while current:
-        current = current.find_next_sibling()
-        if not current:
-            break
-            
-        # Stop at next antiphon or Glory
-        if current.name == 'span' and current.get('class') == ['rubrica']:
-            text = current.get_text()
-            if re.search(r'(Ant\.\s*2|Glory\s+to\s+the\s+Father|Psalm\s+Prayer)', text, re.IGNORECASE):
-                print(f"STOP at: {text[:50]}")
-                break
-        
-        # Collect non-rubrica text
-        if current.name != 'span' or current.get('class') != ['rubrica']:
-            text = current.get_text().strip()
-            if text:
-                psalm_parts.append(text)
-                print(f"  Added: {text[:80]}")
-    
-    print(f"\n\nTotal parts collected: {len(psalm_parts)}")
-    full_text = '\n'.join(psalm_parts)
-    print(f"Total character count: {len(full_text)}")
-    print(f"\nFirst 500 chars:\n{full_text[:500]}")
-else:
-    print("Ant. 1 not found!")
+
+def test_extract_psalm_1_from_html():
+    html = _load_fixture(os.path.join('debug_files', 'debug_morning_prayer.html'))
+    soup = BeautifulSoup(html, 'html.parser')
+    verses = extract_psalm_verses_from_html(soup, 1)
+    assert isinstance(verses, list)
+    assert len(verses) >= 2
+    assert verses[0]['speaker'] in ('Priest', 'People')
+    assert all('text' in v and isinstance(v['text'], str) and len(v['text']) > 0 for v in verses)
+
+
+def test_extract_canticle_info_from_html():
+    html = _load_fixture(os.path.join('debug_files', 'debug_morning_prayer.html'))
+    soup = BeautifulSoup(html, 'html.parser')
+    text = soup.get_text()
+    info = extract_canticle_info(soup, text)
+    assert isinstance(info, dict)
+    assert 'title' in info and isinstance(info['title'], str)
+
+
+def test_extract_intercessions_from_html():
+    html = _load_fixture(os.path.join('debug_files', 'debug_morning_prayer.html'))
+    soup = BeautifulSoup(html, 'html.parser')
+    text = soup.get_text()
+    groups = extract_intercessions_html(soup, text)
+    assert isinstance(groups, list)
+    # May be empty depending on fixture, but structure should hold
+    for g in groups:
+        assert 'intentions' in g and isinstance(g['intentions'], list)
