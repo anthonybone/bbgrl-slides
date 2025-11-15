@@ -2459,6 +2459,9 @@ class BBGRLSlideGeneratorV2:
         
         # Add The Jubilee Prayer slides at the very end
         slide_count = self._create_jubilee_prayer_slides(prs, slide_count)
+
+        # Add St. Joseph Prayer image slide at the very end
+        slide_count = self._create_st_joseph_prayer_image_slide(prs, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -2726,6 +2729,22 @@ class BBGRLSlideGeneratorV2:
         else:
             print(f"  WARNING: Novena Sacred Heart image not found at {image_path}")
         
+        return slide_count
+
+    def _create_st_joseph_prayer_image_slide(self, prs, slide_count):
+        """Create St. Joseph Prayer fullscreen image slide at the end"""
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+        image_path = "st_joseph_prayer.png"
+        if os.path.exists(image_path):
+            slide_width = prs.slide_width
+            slide_height = prs.slide_height
+            slide.shapes.add_picture(image_path, 0, 0, slide_width, slide_height)
+            print(f"Created slide {slide_count}: St. Joseph Prayer image slide")
+        else:
+            print(f"  WARNING: St. Joseph Prayer image not found at {image_path}")
+
         return slide_count
 
     def _create_soul_of_christ_slides(self, prs, slide_count):
