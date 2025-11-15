@@ -87,14 +87,15 @@ def _run_generation(job_id: str, date_str: str):
 
         # Create presentation
         _update(job_id, 60, "Creating PowerPoint presentation")
-        # Use a per-job output folder to avoid conflicts
-        out_dir = os.path.join("output_v2")
-        output_path = gen.create_presentation_from_template(data, output_dir=out_dir)
+        # Use a persistent output folder next to the EXE/script
+        persistent_out_dir = RUNTIME_DIR / "output_v2"
+        persistent_out_dir.mkdir(exist_ok=True)
+        output_path = gen.create_presentation_from_template(data, output_dir=str(persistent_out_dir))
 
         # All done!
         _update(job_id, 100, "Done. Ready to download")
         JOBS[job_id]["done"] = True
-        JOBS[job_id]["output_path"] = output_path
+        JOBS[job_id]["output_path"] = str(output_path)
     except Exception as e:
         logger.exception("Generation failed")
         JOBS[job_id]["done"] = True
@@ -109,7 +110,7 @@ def index():
 
 @app.route("/start", methods=["POST"])
 def start():
-    date_str = request.form.get("date") or request.json.get("date") if request.is_json else None
+    date_str = request.form.get("date")
     if not date_str:
         return jsonify({"error": "Missing date"}), 400
     try:
