@@ -1,0 +1,174 @@
+    def _create_responsorial_psalm_slides(self, prs, citation, verses, slide_count):
+    """Create slides for Responsorial Psalm, spreading content across multiple slides as needed
+    
+    The verses list alternates: response, blank, verse_stanza, blank, response, blank, verse_stanza...
+    
+    Args:
+        prs: Presentation object
+        citation: Citation string (e.g., "Ps 146:7, 8-9, 9-10")
+        verses: List alternating between responses and verse stanzas
+        slide_count: Current slide count
+        
+    Returns:
+        Updated slide count
+    """
+    try:
+        if not verses or len(verses) < 3:
+            return slide_count
+        
+        # Extract the response (first element)
+        response = verses[0] if verses else "℟. Response"
+        
+        # Process the verses - they come in groups: blank, verse_stanza, blank, response
+        # Skip the first response and start from index 1
+        i = 1
+        is_first_slide = True
+        current_lines = []
+        
+        while i < len(verses):
+            line = verses[i]
+            
+            # Skip blank lines
+            if line == "":
+                i += 1
+                continue
+            
+            # If it's a response line (℟.), this marks the end of a stanza group
+            if line.startswith("℟."):
+                # We have accumulated a complete stanza, create a slide
+                if current_lines:
+                    slide_count = self._create_responsorial_psalm_slide(
+                        prs, citation, response, current_lines, slide_count, is_first_slide
+                    )
+                    current_lines = []
+                    is_first_slide = False
+                i += 1
+                continue
+            
+            # Otherwise it's a verse stanza - add it to current accumulation
+            current_lines.append(line)
+            i += 1
+        
+        # Create final slide if there are remaining lines
+        if current_lines:
+            slide_count = self._create_responsorial_psalm_slide(
+                prs, citation, response, current_lines, slide_count, is_first_slide
+            )
+        
+        return slide_count
+        
+    except Exception as e:
+        print(f"  WARNING: Error creating responsorial psalm slides: {e}")
+        import traceback
+        traceback.print_exc()
+        return slide_count
+
+
+    def _create_responsorial_psalm_slide(self, prs, citation, response, verse_lines, slide_count, is_first):
+    """Create a single Responsorial Psalm slide
+    
+    Args:
+        prs: Presentation object
+        citation: Citation string (e.g., "Ps 146:7, 8-9, 9-10")
+        response: The response line (e.g., "℟. (1b) Praise the Lord, my soul!")
+        verse_lines: List of verse stanza lines (already formatted with indentation via \n)
+        slide_count: Current slide count
+        is_first: Whether this is the first psalm slide (to add header)
+        
+    Returns:
+        Updated slide count
+    """
+    try:
+        from pptx.util import Inches, Pt
+        from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+        
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+        
+        # Add text box
+        left = Inches(0.5)
+        top = Inches(1.0)
+        width = Inches(12.33)
+        height = Inches(6.5)
+        
+        textbox = slide.shapes.add_textbox(left, top, width, height)
+        text_frame = textbox.text_frame
+        text_frame.word_wrap = True
+        text_frame.vertical_anchor = MSO_ANCHOR.TOP
+        
+        # Clear default paragraph
+        text_frame.clear()
+        
+        # Add header if first slide
+        if is_first:
+            # "Responsorial Psalm" header
+            p = text_frame.paragraphs[0]
+            p.text = "Responsorial Psalm"
+            p.font.name = "Georgia"
+            p.font.size = Pt(48)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 51, 102)  # Dark blue
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(12)
+            
+            # Citation
+            p = text_frame.add_paragraph()
+            p.text = citation
+            p.font.name = "Georgia"
+            p.font.size = Pt(36)
+            p.font.bold = False
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(16)
+            
+            print(f"Created slide {slide_count}: Responsorial Psalm (header + citation)")
+        else:
+            print(f"Created slide {slide_count}: Responsorial Psalm (content)")
+        
+        # Add response
+        p = text_frame.add_paragraph() if is_first else text_frame.paragraphs[0]
+        p.text = response
+        p.font.name = "Georgia"
+        p.font.size = Pt(36)
+        p.font.bold = True
+        p.font.color.rgb = RGBColor(0, 0, 0)
+        p.alignment = PP_ALIGN.CENTER
+        p.space_after = Pt(16)
+        
+        # Add verse stanzas
+        for verse_stanza in verse_lines:
+            # The verse_stanza has \n for line breaks with proper indentation
+            lines = verse_stanza.split('\n')
+            
+            for line_idx, line in enumerate(lines):
+                p = text_frame.add_paragraph()
+                p.text = line.strip()
+                p.font.name = "Georgia"
+                p.font.size = Pt(32)
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+                
+                # Add spacing between lines
+                if line_idx < len(lines) - 1:
+                    p.space_after = Pt(8)
+                else:
+                    p.space_after = Pt(16)  # More space after stanza
+        
+        # Add response again at the end
+        p = text_frame.add_paragraph()
+        # Remove reference from response if present
+        response_short = re.sub(r'\([^)]+\)\s*', '', response)
+        p.text = response_short
+        p.font.name = "Georgia"
+        p.font.size = Pt(36)
+        p.font.bold = True
+        p.font.color.rgb = RGBColor(0, 0, 0)
+        p.alignment = PP_ALIGN.CENTER
+        
+        return slide_count
+        
+    except Exception as e:
+        print(f"  WARNING: Error creating responsorial psalm slide: {e}")
+        import traceback
+        traceback.print_exc()
+        return slide_count

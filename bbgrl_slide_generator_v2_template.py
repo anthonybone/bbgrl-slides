@@ -525,8 +525,8 @@ class BBGRLSlideGeneratorV2:
                     "verses": self._extract_first_reading_verses(full_text)
                 },
                 "responsorial_psalm": {
-                    "citation": self._extract_psalm_citation(full_text),
-                    "verses": self._extract_psalm_response_verses(full_text)
+                    "citation": self._extract_psalm_citation(html_content),  # Pass HTML for citation
+                    "verses": self._extract_psalm_response_verses(html_content)  # Pass HTML to preserve <br> tags
                 },
                 "gospel_acclamation": {
                     "verse": self._extract_gospel_acclamation(full_text)
@@ -1907,19 +1907,163 @@ class BBGRLSlideGeneratorV2:
             traceback.print_exc()
             return []
 
-    def _extract_psalm_citation(self, text):
-        """Extract responsorial psalm citation"""
-        return "Ps 147:12-13, 14-15, 19-20"
+    def _extract_psalm_citation(self, html_or_text):
+        """Extract responsorial psalm citation from iBreviary HTML"""
+        import re
+        from bs4 import BeautifulSoup
+        
+        # Get text from HTML if needed
+        if html_or_text.strip().startswith('<'):
+            soup = BeautifulSoup(html_or_text, 'html.parser')
+            text = soup.get_text()
+        else:
+            text = html_or_text
+        
+        # Look for pattern like "Responsorial PsalmPs 146:7, 8-9, 9-10" or with line break
+        match = re.search(r'(?:Responsorial Psalm|RESPONSORIAL PSALM)\s*([Pp]s?\s*[\d:,\s-]+)', text, re.IGNORECASE)
+        if match:
+            citation = match.group(1).strip()
+            # Ensure it starts with "Ps " for consistency
+            if not citation.startswith('Ps '):
+                citation = 'Ps ' + citation.lstrip('Psp')
+            return citation
+        return "Ps [citation not found]"
 
-    def _extract_psalm_response_verses(self, text):
-        """Extract responsorial psalm verses"""
-        return [
-            "℟. Praise the Lord, Jerusalem.",
-            "[Psalm verse 1]",
-            "℟. Praise the Lord, Jerusalem.", 
-            "[Psalm verse 2]",
-            "℟. Praise the Lord, Jerusalem."
-        ]
+    def _extract_psalm_response_verses(self, html_content):
+        """Extract responsorial psalm response and verses from iBreviary HTML"""
+        import re
+        from bs4 import BeautifulSoup
+        
+        # Parse HTML with BeautifulSoup to preserve structure
+        if html_content.strip().startswith('<'):
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find the Responsorial Psalm section
+            # Look for the "Responsorial Psalm" heading
+            psalm_heading = soup.find(string=re.compile(r'Responsorial Psalm', re.IGNORECASE))
+            if not psalm_heading:
+                return ["\u211f. [Response not found]", "[Verses not found]"]
+            
+            # Get the parent and following siblings
+            current = psalm_heading.parent
+            psalm_paragraphs = []
+            
+            # Collect all <p> tags until we hit the next section
+            for sibling in current.find_all_next(['p', 'hr']):
+                if sibling.name == 'hr':
+                    break
+                psalm_paragraphs.append(sibling)
+                # Stop if we see "Second Reading" or other headings
+                if sibling.get_text() and re.search(r'Second Reading|Gospel|Acclamation', sibling.get_text(), re.IGNORECASE):
+                    break
+            
+            # Extract response from paragraph containing "R. :" 
+            # The HTML has <p>R. :</p> followed by <p> with the actual response
+            response = "\u211f. [Response not found]"
+            response_short = "[Response not found]"
+            
+            for i, p in enumerate(psalm_paragraphs):
+                text = p.get_text()
+                # Look for "R. :" paragraph
+                if text.strip() == "R. :":
+                    # The next paragraph should have the response
+                    if i + 1 < len(psalm_paragraphs):
+                        next_p = psalm_paragraphs[i + 1]
+                        html_str = str(next_p)
+                        # Replace <br> tags with newlines
+                        html_str = html_str.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
+                        temp_soup = BeautifulSoup(html_str, 'html.parser')
+                        resp_text = temp_soup.get_text()
+                        
+                        # Extract response: ℟. (ref) text before "or:"
+                        # Look for text in <strong> tags or after ℟.
+                        response_match = re.search(r'\u211f\.\s*\(([^)]+)\)\s*([^\n]+?)(?=\s*or:|\s*\n|$)', resp_text)
+                        if response_match:
+                            ref = response_match.group(1).strip()
+                            resp_text_clean = response_match.group(2).strip()
+                            response = f"\u211f. ({ref}) {resp_text_clean}"
+                            response_short = resp_text_clean
+                        else:
+                            # Try without reference
+                            response_match = re.search(r'\u211f\.\s*([^\n]+?)(?=\s*or:|\s*\n|$)', resp_text)
+                            if response_match:
+                                resp_text_clean = response_match.group(1).strip()
+                                response = f"\u211f. {resp_text_clean}"
+                                response_short = resp_text_clean
+                        break
+            
+            # Extract verses from the paragraph(s) containing verse text with <br> tags
+            result = [response, ""]
+            
+            for p in psalm_paragraphs:
+                text_content = p.get_text()
+                # Skip paragraphs with R. :, citations, or section headings
+                if any(x in text_content for x in ['R. :', 'Ps ', 'Responsorial Psalm', 'Second Reading']):
+                    continue
+                
+                # Get HTML and preserve <br> as newlines
+                html_str = str(p)
+                html_str = html_str.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
+                temp_soup = BeautifulSoup(html_str, 'html.parser')
+                verse_text = temp_soup.get_text()
+                
+                # Remove all ℟. response repetitions and "or:" lines
+                # Pattern: ℟. text or:℟. Alleluia.
+                verse_text = re.sub(r'\u211f\.\s*[^\n]*(?:\n\s*or:\s*\n\s*\u211f\.\s*[^\n]*)?', '\n\n', verse_text)
+                
+                # Split by double newlines to get stanzas
+                stanzas = re.split(r'\n\s*\n+', verse_text)
+                
+                for stanza in stanzas:
+                    stanza = stanza.strip()
+                    if not stanza or len(stanza) < 15:
+                        continue
+                    
+                    # Remove any remaining "or:", "Alleluia" fragments
+                    if stanza.lower().startswith('or:') or stanza.lower() == 'alleluia.' or stanza.lower() == 'alleluia':
+                        continue
+                    
+                    # Remove trailing Alleluia if at end of final stanza
+                    stanza = re.sub(r'\s+Alleluia\.\s*$', '', stanza, flags=re.IGNORECASE)
+                    
+                    # Clean up and format lines
+                    lines = [line.strip() for line in stanza.split('\n') if line.strip()]
+                    
+                    if lines:
+                        # Join lines with proper formatting
+                        formatted_verse = '\n   '.join(lines)
+                        result.append(formatted_verse)
+                        result.append("")
+                        result.append(f"\u211f. {response_short}")
+                        result.append("")
+            
+            # Remove trailing empty line only (keep final response)
+            while result and result[-1] == "":
+                result.pop()
+                
+            return result if len(result) > 2 else [response, "[Verses not found]"]
+        else:
+            # Fallback to text-based parsing
+            text = html_content
+            # Similar logic as before...
+            return ["\u211f. [Response not found]", "[Verses - HTML parsing required]"]
+        
+        # Build the result with response after each verse stanza
+        result = []
+        result.append(response)
+        result.append("")  # Blank line
+        
+        for verse in verses:
+            result.append(verse)
+            result.append("")  # Blank line
+            result.append(response)
+            result.append("")  # Blank line
+        
+        # Remove trailing blank line
+        if result and result[-1] == "":
+            result.pop()
+        
+        return result if len(result) > 2 else [response, "[Verses not found]"]
 
     def _extract_gospel_acclamation(self, text):
         """Extract gospel acclamation"""
@@ -3656,18 +3800,27 @@ class BBGRLSlideGeneratorV2:
         return slide_count + 6  # Placeholder
 
     def _create_mass_readings_section(self, prs, liturgical_data, slide_count):
-        """Create mass readings section - specifically First Reading"""
+        """Create mass readings section - First Reading and Responsorial Psalm"""
         try:
+            # First Reading
             first_reading = liturgical_data.get('mass_readings', {}).get('first_reading', {})
             citation = first_reading.get('citation', '')
             verses = first_reading.get('verses', [])
             
-            if not verses:
-                print("  WARNING: No First Reading verses found, skipping section")
-                return slide_count
+            if verses:
+                slide_count = self._create_first_reading_slides(prs, citation, verses, slide_count)
+            else:
+                print("  WARNING: No First Reading verses found")
             
-            # Create slides for First Reading
-            slide_count = self._create_first_reading_slides(prs, citation, verses, slide_count)
+            # Responsorial Psalm
+            responsorial_psalm = liturgical_data.get('mass_readings', {}).get('responsorial_psalm', {})
+            psalm_citation = responsorial_psalm.get('citation', '')
+            psalm_verses = responsorial_psalm.get('verses', [])
+            
+            if psalm_verses:
+                slide_count = self._create_responsorial_psalm_slides(prs, psalm_citation, psalm_verses, slide_count)
+            else:
+                print("  WARNING: No Responsorial Psalm verses found")
             
             return slide_count
             
@@ -3814,6 +3967,218 @@ class BBGRLSlideGeneratorV2:
         slide_type = "(header + content)" if is_first else "(content)"
         print(f"Created slide {slide_count}: First Reading {slide_type} ({len(lines)} lines)")
         return slide_count
+
+    def _create_responsorial_psalm_slides(self, prs, citation, verses, slide_count):
+        """Create slides for Responsorial Psalm with each response and verse on separate slides
+        
+        The verses list alternates: response, blank, verse_stanza, blank, response, blank, verse_stanza...
+        Expected slide pattern: Header+Response, Verse1, Response, Verse2, Response, Verse3, Response
+        
+        Args:
+            prs: Presentation object
+            citation: Citation string (e.g., "Ps 146:7, 8-9, 9-10")
+            verses: List alternating between responses and verse stanzas
+            slide_count: Current slide count
+            
+        Returns:
+            Updated slide count
+        """
+        try:
+            if not verses or len(verses) < 3:
+                return slide_count
+            
+            # Extract the main response (first element)
+            main_response = verses[0] if verses else "\u211f. Response"
+            
+            # Create first slide with header, citation, and response
+            slide_count = self._create_responsorial_psalm_header_slide(
+                prs, citation, main_response, slide_count
+            )
+            
+            # Process the rest: skip blanks, create slides for verses and responses
+            i = 1
+            while i < len(verses):
+                line = verses[i]
+                
+                # Skip blank lines
+                if line == "":
+                    i += 1
+                    continue
+                
+                # If it's a response line (\u211f.), create a response slide
+                if line.startswith("\u211f."):
+                    slide_count = self._create_responsorial_psalm_response_slide(
+                        prs, line, slide_count
+                    )
+                    i += 1
+                    continue
+                
+                # Otherwise it's a verse stanza - create a verse slide
+                slide_count = self._create_responsorial_psalm_verse_slide(
+                    prs, line, slide_count
+                )
+                i += 1
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating responsorial psalm slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_responsorial_psalm_header_slide(self, prs, citation, response, slide_count):
+        """Create the header slide with Responsorial Psalm title, citation, and response"""
+        try:
+            import re
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            left = Inches(0.5)
+            top = Inches(1.5)
+            width = Inches(12.33)
+            height = Inches(6.0)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.TOP
+            text_frame.clear()
+            
+            # Header
+            p = text_frame.paragraphs[0]
+            p.text = "Responsorial Psalm"
+            p.font.name = "Georgia"
+            p.font.size = Pt(48)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 51, 102)
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(16)
+            
+            # Citation
+            p = text_frame.add_paragraph()
+            p.text = citation
+            p.font.name = "Georgia"
+            p.font.size = Pt(36)
+            p.font.bold = False
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(24)
+            
+            # Response
+            p = text_frame.add_paragraph()
+            p.text = response
+            p.font.name = "Georgia"
+            p.font.size = Pt(40)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            
+            print(f"Created slide {slide_count}: Responsorial Psalm (header + citation + response)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating psalm header slide: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_responsorial_psalm_response_slide(self, prs, response, slide_count):
+        """Create a slide with just the response"""
+        try:
+            import re
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            left = Inches(0.5)
+            top = Inches(2.5)
+            width = Inches(12.33)
+            height = Inches(4.0)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            text_frame.clear()
+            
+            p = text_frame.paragraphs[0]
+            p.text = response
+            p.font.name = "Georgia"
+            p.font.size = Pt(40)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            
+            print(f"Created slide {slide_count}: Responsorial Psalm (response)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating psalm response slide: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_responsorial_psalm_verse_slide(self, prs, verse_stanza, slide_count):
+        """Create a slide with verse stanza text"""
+        try:
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            left = Inches(0.5)
+            top = Inches(1.5)
+            width = Inches(12.33)
+            height = Inches(6.0)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.TOP
+            text_frame.clear()
+            
+            # Split verse by line breaks
+            lines = verse_stanza.split('\n')
+            
+            for line_idx, line in enumerate(lines):
+                if line_idx == 0:
+                    p = text_frame.paragraphs[0]
+                else:
+                    p = text_frame.add_paragraph()
+                    
+                p.text = line.strip()
+                p.font.name = "Georgia"
+                p.font.size = Pt(32)
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+                p.space_after = Pt(8)
+            
+            print(f"Created slide {slide_count}: Responsorial Psalm (verse)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating psalm verse slide: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating responsorial psalm slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
 
     def _create_post_communion_prayers(self, prs, liturgical_data, slide_count):
         """Create static post-communion prayers following reference template"""
