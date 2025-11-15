@@ -3,6 +3,15 @@
 output/
 output_v2/
 
+# PyInstaller / build artifacts
+dist/
+build/
+Output/
+*.spec
+
+# App runtime logs
+ui_app.log
+
 # Debug and test files
 debug_files/
 debug_*.py
@@ -25,6 +34,15 @@ __pycache__/
 venv/
 env/
 .env
+.venv/
+.venv-*/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
 
 # IDE files
 .vscode/

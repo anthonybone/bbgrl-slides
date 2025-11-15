@@ -472,6 +472,7 @@ class bbgrlslidegeneratorv1:
 
 		output_path = os.path.join(_dir, output_filename)
 		prs.save(output_path)
+		return output_path
 
 	# --- Dynamic section builders (moved from legacy file) ---
 

@@ -4,3 +4,4 @@ python-pptx
 lxml
 selenium
 pytest
+Flask

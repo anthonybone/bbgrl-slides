@@ -2,6 +2,57 @@
 
 This program automatically generates PowerPoint slides for daily Catholic Mass with morning prayers and daily readings, designed with large text for elderly congregation members to read from the back of the church.
 
+## Desktop/Web UI (new)
+
+You can now run a simple desktop-friendly web UI with a date picker, a 0–100% progress bar showing the current step, and a final Download button for the generated PowerPoint.
+
+### Run the UI locally
+
+```bash
+pip install -r requirements.txt
+python ui_app/app.py
+```
+
+Then open http://127.0.0.1:5000 in your browser. Select the date and click Generate. When it finishes, click Download PowerPoint.
+
+### Windows Installer (recommended)
+
+Download a ready-to-run Windows installer from GitHub Releases once the workflow completes.
+
+For maintainers: a GitHub Actions workflow builds the installer automatically. Trigger it via a tag (e.g. `v1.0.0`) or manually:
+
+```bash
+# Local manual build (optional alternative)
+package_windows.bat
+```
+
+What the installer does:
+- Installs the app under Program Files
+- Creates a Start Menu shortcut (and optional desktop shortcut)
+- Launches the app after install
+
+Troubleshooting on Windows:
+- If the browser doesn’t open automatically after launch, open the URL printed by the app (it picks a free port starting at 5000).
+- The app writes a log file next to the installed EXE: `ui_app.log`.
+
+
+Notes:
+- Chrome/Chromium must be available for Selenium.
+- First run may take longer while ChromeDriver is initialized.
+
+### Chrome OS
+
+Use the Linux (Crostini) environment:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-pip
+pip3 install -r requirements.txt
+python3 ui_app/app.py
+```
+
+Open Chrome to http://127.0.0.1:5000. The Download button saves the PowerPoint to your Linux home; you can move it to your Chrome OS files.
+
 ## Features
 
 - **Large, readable text**: Optimized for elderly congregation members
@@ -19,6 +70,7 @@ This program automatically generates PowerPoint slides for daily Catholic Mass w
   - beautifulsoup4
   - python-pptx
   - lxml
+  - Flask
 
 ## Usage
 
