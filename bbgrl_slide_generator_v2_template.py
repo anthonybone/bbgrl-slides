@@ -2439,6 +2439,9 @@ class BBGRLSlideGeneratorV2:
         # Add Novena to the Sacred Heart image slide at the very end
         slide_count = self._create_novena_sacred_heart_slide(prs, slide_count)
         
+        # Add Soul of Christ prayer slides at the very end
+        slide_count = self._create_soul_of_christ_slides(prs, slide_count)
+        
         # Save presentation
         output_dir = "output_v2"
         if not os.path.exists(output_dir):
@@ -2706,6 +2709,82 @@ class BBGRLSlideGeneratorV2:
             print(f"  WARNING: Novena Sacred Heart image not found at {image_path}")
         
         return slide_count
+
+    def _create_soul_of_christ_slides(self, prs, slide_count):
+        """Create two Soul of Christ prayer text slides"""
+        try:
+            # First prayer slide
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box for prayer text
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            # Add prayer text
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            
+            prayer_text = (
+                "Soul of Christ, make me holy.\n"
+                "Body of Christ, save me.\n"
+                "Blood of Christ, inebriate me.\n"
+                "Water from the side of Christ, wash me.\n"
+                "Passion of Christ, make me strong.\n"
+                "O good Jesus, hear me.\n"
+                "Hide me within your wounds."
+            )
+            
+            run = para.add_run()
+            run.text = prayer_text
+            run.font.name = "Georgia"
+            run.font.size = Pt(44)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Black text
+            
+            print(f"Created slide {slide_count}: Soul of Christ Prayer (1/2)")
+            
+            # Second prayer slide
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box for prayer text
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            # Add prayer text
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            
+            prayer_text = (
+                "Let me never be separated from You.\n"
+                "Deliver me from the wicked enemy,\n"
+                "Call me at the hour of my death.\n"
+                "And tell me to come to you\n"
+                "that with Your saints I may praise You forever.\n"
+                "Amen."
+            )
+            
+            run = para.add_run()
+            run.text = prayer_text
+            run.font.name = "Georgia"
+            run.font.size = Pt(44)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Black text
+            
+            print(f"Created slide {slide_count}: Soul of Christ Prayer (2/2)")
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating Soul of Christ prayer slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
 
     def _create_opening_slides(self, prs, liturgical_data, slide_count):
         """Create opening slides following reference template
