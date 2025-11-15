@@ -2457,6 +2457,9 @@ class BBGRLSlideGeneratorV2:
         # Add Prayer to St. Michael slides at the very end
         slide_count = self._create_prayer_to_st_michael_slides(prs, slide_count)
         
+        # Add The Jubilee Prayer slides at the very end
+        slide_count = self._create_jubilee_prayer_slides(prs, slide_count)
+        
         # Save presentation
         output_dir = "output_v2"
         if not os.path.exists(output_dir):
@@ -3368,6 +3371,107 @@ class BBGRLSlideGeneratorV2:
             return slide_count
         except Exception as e:
             print(f"  WARNING: Error creating Prayer to St. Michael slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_jubilee_prayer_slides(self, prs, slide_count):
+        """Create seven 'THE JUBILEE PRAYER' slides appended at end.
+
+        - Slide 1: Title 'THE JUBILEE PRAYER' in burgundy.
+        - Slides 2-6: Body text in black, centered, Georgia, bold, auto-fit.
+        - Slide 7: Body text in black with final 'Amen.' in burgundy on its own line.
+        """
+        try:
+            burgundy = RGBColor(139, 0, 0)
+
+            # Slide 1: Title only in burgundy
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            title_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.0), Inches(12.33), Inches(3.0))
+            title_frame = title_box.text_frame
+            title_frame.word_wrap = True
+            title_frame.text = "THE JUBILEE PRAYER"
+            title_para = title_frame.paragraphs[0]
+            title_para.alignment = PP_ALIGN.CENTER
+            title_para.font.name = "Georgia"
+            title_para.font.bold = True
+            title_para.font.size = Pt(80)
+            title_para.font.color.rgb = burgundy
+            print(f"Created slide {slide_count}: THE JUBILEE PRAYER (title)")
+
+            # Helper to add a body slide with optional multiple lines
+            def add_body_slide(lines):
+                nonlocal slide_count
+                slide_count += 1
+                s = prs.slides.add_slide(prs.slide_layouts[6])
+                box = s.shapes.add_textbox(Inches(0.5), Inches(1.0), Inches(12.33), Inches(5.8))
+                tf = box.text_frame
+                tf.word_wrap = True
+                tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+                tf.clear()
+                for idx, ln in enumerate(lines):
+                    p = tf.add_paragraph() if idx > 0 else tf.paragraphs[0]
+                    p.text = ln
+                    p.alignment = PP_ALIGN.CENTER
+                    p.font.name = "Georgia"
+                    p.font.bold = True
+                    p.font.size = Pt(48)
+                    p.font.color.rgb = RGBColor(0, 0, 0)
+                print(f"Created slide {slide_count}: Jubilee Prayer body")
+
+            # Slides 2-6 content
+            add_body_slide([
+                "Father in heaven,",
+                "may the faith you have given us in your son, Jesus Christ, our brother, and the flame of charity"
+            ])
+
+            add_body_slide([
+                "enkindled in our hearts by the Holy Spirit, reawaken in us the blessed hope for the coming of your Kingdom."
+            ])
+
+            add_body_slide([
+                "May your grace transform us",
+                "into tireless cultivators of the seeds of the Gospel. May those seeds transform from within both humanity and the whole"
+            ])
+
+            add_body_slide([
+                "cosmos in the sure expectation of a new heaven and a new earth, when, with the powers of Evil vanquished, your glory will shine eternally."
+            ])
+
+            add_body_slide([
+                "May the grace of the Jubilee reawaken in us, Pilgrims of Hope, a yearning for the treasures of heaven. May that same grace spread the"
+            ])
+
+            # Slide 7: final body with 'Amen.' in burgundy on its own line
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            box = slide.shapes.add_textbox(Inches(0.5), Inches(0.9), Inches(12.33), Inches(6.0))
+            tf = box.text_frame
+            tf.word_wrap = True
+            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+
+            p1 = tf.paragraphs[0]
+            p1.text = "joy and peace of our Redeemer throughout the earth. To you our God, eternally blessed, be glory and praise for ever."
+            p1.alignment = PP_ALIGN.CENTER
+            p1.font.name = "Georgia"
+            p1.font.bold = True
+            p1.font.size = Pt(48)
+            p1.font.color.rgb = RGBColor(0, 0, 0)
+
+            p2 = tf.add_paragraph()
+            p2.text = "Amen."
+            p2.alignment = PP_ALIGN.CENTER
+            p2.font.name = "Georgia"
+            p2.font.bold = True
+            p2.font.size = Pt(56)
+            p2.font.color.rgb = burgundy
+
+            print(f"Created slide {slide_count}: Jubilee Prayer closing with Amen.")
+
+            return slide_count
+        except Exception as e:
+            print(f"  WARNING: Error creating Jubilee Prayer slides: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
