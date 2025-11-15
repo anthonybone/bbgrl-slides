@@ -41,8 +41,7 @@ jobs:
 
       - name: Build Windows installer (Inno Setup)
         run: |
-          set ISCC_PATH="C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe"
-          %ISCC_PATH% installer\\windows\\bbgrl-slides.iss
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\windows\bbgrl-slides.iss
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
