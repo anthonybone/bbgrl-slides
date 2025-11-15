@@ -2501,7 +2501,7 @@ class BBGRLSlideGeneratorV2:
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
         
         # Path to the image file
-        image_path = "daily_morning_prayer.png"
+        image_path = "png/daily_morning_prayer.png"
         
         # Check if image exists
         if os.path.exists(image_path):
@@ -2532,7 +2532,7 @@ class BBGRLSlideGeneratorV2:
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
         
         # Path to the image file
-        image_path = "heart_of_jesus_slide.png"
+        image_path = "png/heart_of_jesus_slide.png"
         
         # Check if image exists
         if os.path.exists(image_path):
@@ -2623,7 +2623,7 @@ class BBGRLSlideGeneratorV2:
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
         
         # Path to the image file
-        image_path = "oh_sacred_heart.png"
+        image_path = "png/oh_sacred_heart.png"
         
         # Check if image exists
         if os.path.exists(image_path):
@@ -2718,7 +2718,7 @@ class BBGRLSlideGeneratorV2:
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
         
         # Path to the image file
-        image_path = "novena_sacred_heart.png"
+        image_path = "png/novena_sacred_heart.png"
         
         # Check if image exists
         if os.path.exists(image_path):
@@ -2739,7 +2739,7 @@ class BBGRLSlideGeneratorV2:
         slide_count += 1
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
 
-        image_path = "st_joseph_prayer.png"
+        image_path = "png/st_joseph_prayer.png"
         if os.path.exists(image_path):
             slide_width = prs.slide_width
             slide_height = prs.slide_height
