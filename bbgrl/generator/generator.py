@@ -95,45 +95,38 @@ class bbgrlslidegeneratorv1:
 		"""Delegated: reference template and formatting rules (extracted)."""
 		return _get_reference_template_cfg()
 
-	def fetch_live_liturgical_data(self, target_date=None):
+	def fetch_live_liturgical_data(self, target_date=None, progress_callback=None):
 		"""
 		Fetch current liturgical data from iBreviary and structure it according to the template
 		"""
+		if progress_callback is None:
+			def progress_callback(percent, message):
+				pass
 		if target_date is None:
 			target_date = datetime.now()
 
-		print(
-			f"Fetching live liturgical data from iBreviary for {target_date.strftime('%B %d, %Y')}..."
-		)
-
+		progress_callback(5, f"Initializing Selenium driver...")
 		try:
-			# Initialize driver once for both Morning Prayer and Readings
 			self._initialize_driver()
-
-			# Fetch Morning Prayer
+			progress_callback(10, f"Navigating to Morning Prayer for {target_date.strftime('%B %d, %Y')}")
 			morning_prayer_data = self._fetch_morning_prayer_structured(target_date)
-
-			# Fetch daily readings (reusing the same driver session)
+			progress_callback(25, "Parsing Morning Prayer data...")
+			progress_callback(30, "Navigating to Daily Readings...")
 			readings_data = self._fetch_daily_readings_structured(target_date)
-
-			# Combine into structured data matching the reference template
+			progress_callback(45, "Parsing Daily Readings data...")
+			progress_callback(50, "Combining structured data...")
 			structured_data = {
 				"date": target_date.strftime("%B %d, %Y"),
 				"morning_prayer": morning_prayer_data,
 				"mass_readings": readings_data,
 				"static_content": self._get_static_devotional_content(),
 			}
-
-			print(f"Successfully fetched liturgical data for {structured_data['date']}")
+			progress_callback(55, f"Successfully fetched liturgical data for {structured_data['date']}")
 			return structured_data
-
 		except Exception as e:
-			print(f"Error fetching liturgical data: {e}")
-			print("Using fallback template structure...")
+			progress_callback(55, f"Error fetching liturgical data: {e}. Using fallback template structure...")
 			return self._get_fallback_data(target_date)
-
 		finally:
-			# Clean up driver after fetching all data
 			if hasattr(self, "scraper") and self.scraper:
 				self.scraper.quit()
 				self.driver = None
@@ -369,7 +362,7 @@ class bbgrlslidegeneratorv1:
 		"""Delegated: complete fallback data structure (extracted)."""
 		return _fallback_data(target_date)
 
-	def create_presentation_from_template(self, liturgical_data, output_filename=None, output_dir=None):
+	def create_presentation_from_template(self, liturgical_data, output_filename=None, output_dir=None, progress_callback=None):
 		"""
 		Create presentation using the reference template structure with live liturgical data
 		"""
@@ -399,71 +392,82 @@ class bbgrlslidegeneratorv1:
 
 		print(f"Creating presentation using reference template structure...")
 		print(f"Date: {liturgical_data['date']}")
+		if progress_callback is None:
+			def progress_callback(percent, message):
+				pass
 
 		slide_count = 0
+		total_steps = 30  # Estimate for percent calculation
+		current_step = 0
+
+		# Estimate total slides for percent calculation
+		estimated_total_slides = 60
+		slides_created = 0
+		def slide_progress(msg):
+			nonlocal slides_created
+			slides_created += 1
+			percent = int((slides_created / estimated_total_slides) * 100)
+			progress_callback(percent, msg)
 
 		# Add blank black slide at the very beginning
 		slide_count = _slides_initial_blank(prs, slide_count)
+		slide_progress("Added blank black slide")
 
 		# Add Daily Morning Prayer image slide as second slide
 		slide_count = _slides_daily_image(prs, slide_count)
+		slide_progress("Added Daily Morning Prayer image slide")
 
 		# Apply reference template structure to current liturgical data
 		slide_count = self._create_opening_slides(prs, liturgical_data, slide_count)
+		slide_progress("Created opening slides")
 		slide_count = self._create_psalmody_section(prs, liturgical_data, slide_count)
+		slide_progress("Created psalmody section")
 		slide_count = self._create_reading_section(prs, liturgical_data, slide_count)
+		slide_progress("Created reading section")
 		slide_count = self._create_responsory_section(prs, liturgical_data, slide_count)
+		slide_progress("Created responsory section")
 		slide_count = self._create_gospel_canticle_section(prs, liturgical_data, slide_count)
+		slide_progress("Created gospel canticle section")
 		slide_count = self._create_intercessions_section(prs, liturgical_data, slide_count)
+		slide_progress("Created intercessions section")
 		slide_count = _slides_lords_prayer(prs, slide_count)
+		slide_progress("Added Lord's Prayer slide")
 		slide_count = self._create_concluding_prayer_slides(prs, liturgical_data, slide_count)
+		slide_progress("Created concluding prayer slides")
 		slide_count = self._create_sacred_heart_hymns(prs, liturgical_data, slide_count)
+		slide_progress("Created Sacred Heart hymns")
 		slide_count = self._create_post_communion_prayers(prs, liturgical_data, slide_count)
-
-		# Add Heart of Jesus image slide at the end
+		slide_progress("Created post-communion prayers")
 		slide_count = _slides_hoj_image(prs, slide_count)
-
-		# Add Heart of Jesus prayer text slides
+		slide_progress("Added Heart of Jesus image slide")
 		slide_count = _slides_hoj_prayers(prs, slide_count)
-
-		# Add Oh Sacred Heart image slide
+		slide_progress("Added Heart of Jesus prayer text slides")
 		slide_count = _slides_osh_image(prs, slide_count)
-
-		# Add Oh Sacred Heart prayer text slides
+		slide_progress("Added Oh Sacred Heart image slide")
 		slide_count = _slides_osh_prayers(prs, slide_count)
-
-		# Add First Reading (Mass readings) at the very end
+		slide_progress("Added Oh Sacred Heart prayer text slides")
 		slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
-
-		# Add Novena to the Sacred Heart image slide at the very end
+		slide_progress("Created mass readings section")
 		slide_count = _slides_nsh_image(prs, slide_count)
-
-		# Add Soul of Christ prayer slides at the very end
+		slide_progress("Added Novena to the Sacred Heart image slide")
 		slide_count = _slides_soc_prayers(prs, slide_count)
-
-		# Add Prayer of Thanksgiving slides at the very end
+		slide_progress("Added Soul of Christ prayer slides")
 		slide_count = _slides_thanksgiving(prs, slide_count)
-
-		# Add Novena of Confidence slides at the very end
+		slide_progress("Added Prayer of Thanksgiving slides")
 		slide_count = _slides_nov_conf(prs, slide_count)
-
-		# Add Novena Prayer slides at the very end
+		slide_progress("Added Novena of Confidence slides")
 		slide_count = _slides_nov_prayer(prs, slide_count)
-
-		# Add Salve Regina slides at the very end
+		slide_progress("Added Novena Prayer slides")
 		slide_count = _slides_salve_regina(prs, slide_count)
-
-		# Add Prayer to St. Michael slides at the very end
+		slide_progress("Added Salve Regina slides")
 		slide_count = _slides_st_michael(prs, slide_count)
-
-		# Add The Jubilee Prayer slides at the very end
+		slide_progress("Added Prayer to St. Michael slides")
 		slide_count = _slides_jubilee(prs, slide_count)
-
-		# Add St. Joseph Prayer image slide at the very end
+		slide_progress("Added The Jubilee Prayer slides")
 		slide_count = _slides_stj_image(prs, slide_count)
-
-		# Add St. Joseph Prayer text slides at the very end
+		slide_progress("Added St. Joseph Prayer image slide")
 		slide_count = _slides_stj_text(prs, slide_count)
+		slide_progress("Added St. Joseph Prayer text slides")
 
 		# Save presentation
 		_dir = output_dir or "output_v2"
@@ -472,6 +476,7 @@ class bbgrlslidegeneratorv1:
 
 		output_path = os.path.join(_dir, output_filename)
 		prs.save(output_path)
+		slide_progress("Presentation saved")
 		return output_path
 
 	# --- Dynamic section builders (moved from legacy file) ---

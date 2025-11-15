@@ -162,3 +162,7 @@ Planned features:
 - Multiple days/week generation
 - Custom formatting options
 - Offline content caching
+
+## How to build new .EXE File:
+bash $ pyinstaller --noconfirm --onefile --name "BBGRL Slides App" --add-data "ui_app\templates;templates" 
+--collect-all flask --collect-all jinja2 --collect-all werkzeug --collect-all itsdangerous --collect-all markupsafe --hidden-import bbgrl --hidden-import bbgrl.generator --paths . ui_app/app.py

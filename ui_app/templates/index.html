@@ -175,7 +175,7 @@
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Status error');
                     bar.style.width = `${data.percent || 0}%`;
-                    status.textContent = data.message || '';
+                    status.textContent = `${data.message || ''} (${data.percent || 0}%)`;
 
                     if (data.done) {
                         clearInterval(pollTimer);

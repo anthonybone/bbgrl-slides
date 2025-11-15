@@ -73,6 +73,9 @@ def _run_generation(job_id: str, date_str: str):
             "output_path": None,
         }
 
+        def progress_callback(percent, message):
+            _update(job_id, percent, message)
+
         _update(job_id, 5, "Initializing generator")
         gen = bbgrlslidegeneratorv1()
 
@@ -82,15 +85,17 @@ def _run_generation(job_id: str, date_str: str):
 
         # Fetch data (single call internally does Morning Prayer + Readings)
         _update(job_id, 15, "Fetching Morning Prayer and Readings")
-        data = gen.fetch_live_liturgical_data(target_date)
+        # Fetch data with progress updates
+        def fetch_progress(percent, message):
+            _update(job_id, percent, message)
+        data = gen.fetch_live_liturgical_data(target_date, progress_callback=fetch_progress)
         _update(job_id, 55, "Fetched data: parsing complete")
 
-        # Create presentation
+        # Create presentation with progress callback
         _update(job_id, 60, "Creating PowerPoint presentation")
-        # Use a persistent output folder next to the EXE/script
         persistent_out_dir = RUNTIME_DIR / "output_v2"
         persistent_out_dir.mkdir(exist_ok=True)
-        output_path = gen.create_presentation_from_template(data, output_dir=str(persistent_out_dir))
+        output_path = gen.create_presentation_from_template(data, output_dir=str(persistent_out_dir), progress_callback=progress_callback)
 
         # All done!
         _update(job_id, 100, "Done. Ready to download")
