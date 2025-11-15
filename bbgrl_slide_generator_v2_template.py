@@ -1781,6 +1781,9 @@ class BBGRLSlideGeneratorV2:
         # slide_count = self._create_jubilee_prayer(prs, liturgical_data, slide_count)
         # slide_count = self._create_st_joseph_prayer(prs, liturgical_data, slide_count)
         
+        # Add Heart of Jesus image slide at the end
+        slide_count = self._create_heart_of_jesus_slide(prs, slide_count)
+        
         # Save presentation
         output_dir = "output_v2"
         if not os.path.exists(output_dir):
@@ -1838,6 +1841,28 @@ class BBGRLSlideGeneratorV2:
             title_para.font.color.rgb = RGBColor(184, 134, 11)  # Gold color
             title_para.alignment = PP_ALIGN.CENTER
             print(f"Created slide {slide_count}: Daily Morning Prayer text slide (image not found)")
+        
+        return slide_count
+
+    def _create_heart_of_jesus_slide(self, prs, slide_count):
+        """Create Heart of Jesus fullscreen image slide at the end"""
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+        
+        # Path to the image file
+        image_path = "heart_of_jesus_slide.png"
+        
+        # Check if image exists
+        if os.path.exists(image_path):
+            # Get slide dimensions
+            slide_width = prs.slide_width
+            slide_height = prs.slide_height
+            
+            # Add image to fill the entire slide
+            slide.shapes.add_picture(image_path, 0, 0, slide_width, slide_height)
+            print(f"Created slide {slide_count}: Heart of Jesus image slide")
+        else:
+            print(f"  WARNING: Heart of Jesus image not found at {image_path}")
         
         return slide_count
 
