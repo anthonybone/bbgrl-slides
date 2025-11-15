@@ -2442,6 +2442,9 @@ class BBGRLSlideGeneratorV2:
         # Add Soul of Christ prayer slides at the very end
         slide_count = self._create_soul_of_christ_slides(prs, slide_count)
         
+        # Add Prayer of Thanksgiving slides at the very end
+        slide_count = self._create_prayer_of_thanksgiving_slides(prs, slide_count)
+        
         # Save presentation
         output_dir = "output_v2"
         if not os.path.exists(output_dir):
@@ -2782,6 +2785,115 @@ class BBGRLSlideGeneratorV2:
             
         except Exception as e:
             print(f"  WARNING: Error creating Soul of Christ prayer slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_prayer_of_thanksgiving_slides(self, prs, slide_count):
+        """Create four Prayer of Thanksgiving slides"""
+        try:
+            # Slide 1
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            # Title in red
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            para.space_after = Pt(12)
+            
+            title_run = para.add_run()
+            title_run.text = "PRAYER OF THANKSGIVING:"
+            title_run.font.name = "Georgia"
+            title_run.font.size = Pt(44)
+            title_run.font.bold = True
+            title_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+            
+            # Body text in black
+            body_para = text_frame.add_paragraph()
+            body_para.alignment = PP_ALIGN.CENTER
+            body_para.space_before = Pt(0)
+            
+            body_run = body_para.add_run()
+            body_run.text = "Lord God, I thank you through the Sacred Heart of Jesus, who is pleased to offer You on our behalf continuous thanksgiving in the Eucharist."
+            body_run.font.name = "Georgia"
+            body_run.font.size = Pt(44)
+            body_run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+            
+            print(f"Created slide {slide_count}: Prayer of Thanksgiving (1/4)")
+            
+            # Slide 2
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            
+            run = para.add_run()
+            run.text = "Thank You for all Your benefits, general as well as special: for creation, redemption, the sacraments; and especially for the Holy Eucharist, and for all graces You have given me."
+            run.font.name = "Georgia"
+            run.font.size = Pt(44)
+            run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            print(f"Created slide {slide_count}: Prayer of Thanksgiving (2/4)")
+            
+            # Slide 3
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            
+            run = para.add_run()
+            run.text = "I wish to thank You, Lord Jesus, on behalf of myself and of all creatures, and to make amends to You, as far as I am able, for the ingratitude of many, of which You complain so vehemently."
+            run.font.name = "Georgia"
+            run.font.size = Pt(44)
+            run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            print(f"Created slide {slide_count}: Prayer of Thanksgiving (3/4)")
+            
+            # Slide 4
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            
+            run = para.add_run()
+            run.text = "I wish that I was able to direct the hearts and minds of all to You and, together with them and for them, love You perfectly in return just as You rightly expect."
+            run.font.name = "Georgia"
+            run.font.size = Pt(44)
+            run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            print(f"Created slide {slide_count}: Prayer of Thanksgiving (4/4)")
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating Prayer of Thanksgiving slides: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
