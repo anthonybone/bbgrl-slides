@@ -2444,6 +2444,9 @@ class BBGRLSlideGeneratorV2:
         
         # Add Prayer of Thanksgiving slides at the very end
         slide_count = self._create_prayer_of_thanksgiving_slides(prs, slide_count)
+
+        # Add Novena of Confidence slides at the very end
+        slide_count = self._create_novena_of_confidence_slides(prs, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -2894,6 +2897,97 @@ class BBGRLSlideGeneratorV2:
             
         except Exception as e:
             print(f"  WARNING: Error creating Prayer of Thanksgiving slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_novena_of_confidence_slides(self, prs, slide_count):
+        """Create five Novena of Confidence slides appended at end.
+
+        Slide 1: Header 'NOVENA OF CONFIDENCE:' in red + first petition lines.
+        Slides 2-5: Black text only.
+        """
+        try:
+            slides = [
+                {"header": "NOVENA OF CONFIDENCE:", "lines": [
+                    "O Lord, Jesus Christ, to Your Most Sacred Heart I confide this intention.....",
+                    "(Mention your request)"
+                ]},
+                {"lines": [
+                    "Only look upon me, then do what Your heart inspires. Let Your Sacred Heart decide. I count on You. I trust in You. I throw myself on Your mercy."
+                ]},
+                {"lines": [
+                    "Lord Jesus! You will not fail me. Sacred Heart of Jesus, I believe in Your love for me. O Sacred Heart Of Jesus, Your kingdom come."
+                ]},
+                {"lines": [
+                    "O Sacred Heart of Jesus, I have asked for many favors, but I earnestly implore this one. Take it; place it in Your Sacred Heart. When the Eternal Father sees it covered with Your Precious Blood,"
+                ]},
+                {"lines": [
+                    "He will not refuse it. It will be no longer my prayer but Yours, O Jesus. O Sacred Heart of Jesus, I place my trust in you. Let me never be confounded. Amen."
+                ]}
+            ]
+
+            for idx, data in enumerate(slides, start=1):
+                slide_count += 1
+                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+                box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.33), Inches(6.5))
+                frame = box.text_frame
+                frame.word_wrap = True
+                frame.vertical_anchor = MSO_ANCHOR.TOP
+
+                if data.get("header"):
+                    header_para = frame.paragraphs[0]
+                    header_para.alignment = PP_ALIGN.CENTER
+                    run = header_para.add_run()
+                    run.text = data["header"]
+                    run.font.name = "Georgia"
+                    run.font.size = Pt(54)
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+                    # Add a blank paragraph before lines for spacing
+                    spacer = frame.add_paragraph()
+                    spacer.text = ""
+                    spacer.alignment = PP_ALIGN.CENTER
+                else:
+                    # Use first paragraph for first line if no header
+                    first_para = frame.paragraphs[0]
+                    first_para.alignment = PP_ALIGN.CENTER
+                    run = first_para.add_run()
+                    run.text = data["lines"][0]
+                    run.font.name = "Georgia"
+                    run.font.size = Pt(44)
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+
+                    # Remaining lines (if any)
+                    for line in data["lines"][1:]:
+                        p = frame.add_paragraph()
+                        p.alignment = PP_ALIGN.CENTER
+                        run = p.add_run()
+                        run.text = line
+                        run.font.name = "Georgia"
+                        run.font.size = Pt(44)
+                        run.font.bold = True
+                        run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+
+                # If header case, iterate all lines normally
+                if data.get("header"):
+                    for line in data["lines"]:
+                        p = frame.add_paragraph()
+                        p.alignment = PP_ALIGN.CENTER
+                        run = p.add_run()
+                        run.text = line
+                        run.font.name = "Georgia"
+                        run.font.size = Pt(44)
+                        run.font.bold = True
+                        run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+
+                print(f"Created slide {slide_count}: Novena of Confidence ({idx}/5)")
+
+            return slide_count
+        except Exception as e:
+            print(f"  WARNING: Error creating Novena of Confidence slides: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
