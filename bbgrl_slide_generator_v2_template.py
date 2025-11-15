@@ -2462,6 +2462,9 @@ class BBGRLSlideGeneratorV2:
 
         # Add St. Joseph Prayer image slide at the very end
         slide_count = self._create_st_joseph_prayer_image_slide(prs, slide_count)
+
+        # Add St. Joseph Prayer text slides at the very end
+        slide_count = self._create_st_joseph_prayer_text_slides(prs, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -2746,6 +2749,94 @@ class BBGRLSlideGeneratorV2:
             print(f"  WARNING: St. Joseph Prayer image not found at {image_path}")
 
         return slide_count
+
+    def _create_st_joseph_prayer_text_slides(self, prs, slide_count):
+        """Create 12 St. Joseph prayer slides with special burgundy phrase.
+
+        - All text black except the exact phrase 'St. Joseph, husband of the Blessed Virgin Mary'
+          which must appear in burgundy when present.
+        - Text centered, Georgia, bold, as large as possible using auto-fit.
+        """
+        try:
+            burgundy = RGBColor(139, 0, 0)
+
+            slides = [
+                [
+                    "To you, O blessed Joseph, do we come in our tribulation, and having implored the help of your most holy Spouse, we confidently invoke your patronage also."
+                ],
+                [
+                    "Through that charity which bound you to the Immaculate Virgin Mother of God and through the"
+                ],
+                [
+                    "paternal love with which you embraced the Child Jesus, we humbly beg you graciously to regard the inheritance"
+                ],
+                [
+                    "which Jesus Christ has purchased by his Blood, and with your power and strength to aid us in our necessities"
+                ],
+                [
+                    "O most watchful guardian of the Holy Family, defend the chosen children of Jesus Christ;"
+                ],
+                [
+                    "O most loving father, ward off from us every contagion of error and corrupting influence;"
+                ],
+                [
+                    "O our most mighty protector, be kind to us and from heaven assist us in our struggle with the power of darkness"
+                ],
+                [
+                    "As once you rescued the Child Jesus from deadly peril, so now protect God's Holy Church from the snares of the"
+                ],
+                [
+                    "enemy and from all adversity; shield, too, each one of us by your constant protection,"
+                ],
+                [
+                    "so that, supported by your example and your aid, we may be able to live piously, to die in holiness, and to obtain eternal happiness in heaven. Amen."
+                ],
+                [
+                    "St. Joseph, husband of the Blessed Virgin Mary",
+                    "All praise, O God, for Joseph, The guardian of your Son, Who saved him from King Herod, When safety there was none."
+                ],
+                [
+                    "He taught the trade of builder, When they to Naz'reth came, And Joseph's love made \"Father\" To be, for Christ, God's name."
+                ]
+            ]
+
+            phrase = "St. Joseph, husband of the Blessed Virgin Mary"
+
+            def add_slide(lines):
+                nonlocal slide_count
+                slide_count += 1
+                slide = prs.slides.add_slide(prs.slide_layouts[6])
+                box = slide.shapes.add_textbox(Inches(0.7), Inches(0.7), Inches(11.93), Inches(6.1))
+                tf = box.text_frame
+                tf.word_wrap = True
+                tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+                tf.vertical_anchor = MSO_ANCHOR.TOP
+
+                for idx, line in enumerate(lines):
+                    p = tf.add_paragraph() if idx > 0 else tf.paragraphs[0]
+                    p.alignment = PP_ALIGN.CENTER
+
+                    if phrase in line:
+                        before, mid, after = line.partition(phrase)
+                        if before:
+                            r = p.add_run(); r.text = before; r.font.name = "Georgia"; r.font.bold = True; r.font.size = Pt(52); r.font.color.rgb = RGBColor(0,0,0)
+                        r = p.add_run(); r.text = phrase; r.font.name = "Georgia"; r.font.bold = True; r.font.size = Pt(52); r.font.color.rgb = burgundy
+                        if after:
+                            r = p.add_run(); r.text = after; r.font.name = "Georgia"; r.font.bold = True; r.font.size = Pt(52); r.font.color.rgb = RGBColor(0,0,0)
+                    else:
+                        r = p.add_run(); r.text = line; r.font.name = "Georgia"; r.font.bold = True; r.font.size = Pt(52); r.font.color.rgb = RGBColor(0,0,0)
+
+                print(f"Created slide {slide_count}: St. Joseph prayer text")
+
+            for lines in slides:
+                add_slide(lines)
+
+            return slide_count
+        except Exception as e:
+            print(f"  WARNING: Error creating St. Joseph prayer text slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
 
     def _create_soul_of_christ_slides(self, prs, slide_count):
         """Create two Soul of Christ prayer text slides"""
