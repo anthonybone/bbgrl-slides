@@ -2453,6 +2453,9 @@ class BBGRLSlideGeneratorV2:
 
         # Add Salve Regina slides at the very end
         slide_count = self._create_salve_regina_slides(prs, slide_count)
+
+        # Add Prayer to St. Michael slides at the very end
+        slide_count = self._create_prayer_to_st_michael_slides(prs, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -3300,6 +3303,71 @@ class BBGRLSlideGeneratorV2:
             return slide_count
         except Exception as e:
             print(f"  WARNING: Error creating Salve Regina slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_prayer_to_st_michael_slides(self, prs, slide_count):
+        """Create three 'Prayer to St. Michael' slides with a header on each.
+
+        Header: 'Prayer to St. Michael' in red, centered, bold (Georgia).
+        Body: black, centered, bold (Georgia), auto-fit to maximize size within bounds.
+        """
+        try:
+            slides = [
+                [
+                    "Saint Michael the Archangel, defend us in battle. Be our protection against the wickedness and snares of the devil."
+                ],
+                [
+                    "May God rebuke him we humbly pray; and do thou. O Prince of the heavenly host, by the power of God,"
+                ],
+                [
+                    "Cast into Hell Satan and all the evil spirits who prowl about the world seeking the ruin of souls. Amen."
+                ]
+            ]
+
+            for idx, lines in enumerate(slides, start=1):
+                slide_count += 1
+                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+                # Single textbox with header + body
+                box = slide.shapes.add_textbox(Inches(0.7), Inches(0.7), Inches(11.93), Inches(6.1))
+                frame = box.text_frame
+                frame.word_wrap = True
+                frame.vertical_anchor = MSO_ANCHOR.TOP
+                frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+
+                # Header
+                header_para = frame.paragraphs[0]
+                header_para.alignment = PP_ALIGN.CENTER
+                header_run = header_para.add_run()
+                header_run.text = "Prayer to St. Michael"
+                header_run.font.name = "Georgia"
+                header_run.font.size = Pt(54)
+                header_run.font.bold = True
+                header_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)  # Red
+
+                # Spacer
+                spacer = frame.add_paragraph()
+                spacer.text = ""
+                spacer.alignment = PP_ALIGN.CENTER
+
+                # Body lines
+                for text in lines:
+                    p = frame.add_paragraph()
+                    p.alignment = PP_ALIGN.CENTER
+                    r = p.add_run()
+                    r.text = text
+                    r.font.name = "Georgia"
+                    r.font.size = Pt(48)
+                    r.font.bold = True
+                    r.font.color.rgb = RGBColor(0, 0, 0)  # Black
+
+                print(f"Created slide {slide_count}: Prayer to St. Michael ({idx}/3)")
+
+            return slide_count
+        except Exception as e:
+            print(f"  WARNING: Error creating Prayer to St. Michael slides: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
