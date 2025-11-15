@@ -1790,6 +1790,9 @@ class BBGRLSlideGeneratorV2:
         # Add Oh Sacred Heart image slide
         slide_count = self._create_oh_sacred_heart_slide(prs, slide_count)
         
+        # Add Oh Sacred Heart prayer text slides
+        slide_count = self._create_oh_sacred_heart_prayer_slides(prs, slide_count)
+        
         # Save presentation
         output_dir = "output_v2"
         if not os.path.exists(output_dir):
@@ -1962,6 +1965,79 @@ class BBGRLSlideGeneratorV2:
             print(f"  WARNING: Oh Sacred Heart image not found at {image_path}")
         
         return slide_count
+
+    def _create_oh_sacred_heart_prayer_slides(self, prs, slide_count):
+        """Create two Oh Sacred Heart prayer text slides"""
+        try:
+            # First prayer slide
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box for prayer text
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            # Add prayer text
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            
+            prayer_text = (
+                "Oh Sacred Heart, Oh love divine.\n"
+                "Do keep us near to Thee.\n"
+                "And make our love so like to Thine\n"
+                "That we may holy be.\n"
+                "Heart of Jesus hear.\n"
+                "Oh heart of love divine.\n"
+                "Listen to our pray'r."
+            )
+            
+            run = para.add_run()
+            run.text = prayer_text
+            run.font.name = "Georgia"
+            run.font.size = Pt(44)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Black text
+            
+            print(f"Created slide {slide_count}: Oh Sacred Heart Prayer (1/2)")
+            
+            # Second prayer slide
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box for prayer text
+            text_box = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(11.33), Inches(4.5))
+            text_frame = text_box.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            # Add prayer text
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_before = Pt(0)
+            
+            prayer_text = (
+                "Make us always Thine.\n"
+                "Oh temple pure, Oh house of gold. Our heaven here below.\n"
+                "What gifts unfurled, what wealth untold. From Thee do ever flow.\n"
+                "Heart of Jesus hear. Oh Heart of love divine. Listen to our pray'r. Make us always Thine."
+            )
+            
+            run = para.add_run()
+            run.text = prayer_text
+            run.font.name = "Georgia"
+            run.font.size = Pt(44)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Black text
+            
+            print(f"Created slide {slide_count}: Oh Sacred Heart Prayer (2/2)")
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating Oh Sacred Heart prayer slides: {e}")
+            traceback.print_exc()
+            return slide_count
 
     def _create_opening_slides(self, prs, liturgical_data, slide_count):
         """Create opening slides following reference template
