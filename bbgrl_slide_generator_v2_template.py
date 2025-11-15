@@ -1787,6 +1787,9 @@ class BBGRLSlideGeneratorV2:
         # Add Heart of Jesus prayer text slides
         slide_count = self._create_heart_of_jesus_prayer_slides(prs, slide_count)
         
+        # Add Oh Sacred Heart image slide
+        slide_count = self._create_oh_sacred_heart_slide(prs, slide_count)
+        
         # Save presentation
         output_dir = "output_v2"
         if not os.path.exists(output_dir):
@@ -1937,6 +1940,28 @@ class BBGRLSlideGeneratorV2:
             print(f"  WARNING: Error creating Heart of Jesus prayer slides: {e}")
             traceback.print_exc()
             return slide_count
+
+    def _create_oh_sacred_heart_slide(self, prs, slide_count):
+        """Create Oh Sacred Heart fullscreen image slide at the end"""
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+        
+        # Path to the image file
+        image_path = "oh_sacred_heart.png"
+        
+        # Check if image exists
+        if os.path.exists(image_path):
+            # Get slide dimensions
+            slide_width = prs.slide_width
+            slide_height = prs.slide_height
+            
+            # Add image to fill the entire slide
+            slide.shapes.add_picture(image_path, 0, 0, slide_width, slide_height)
+            print(f"Created slide {slide_count}: Oh Sacred Heart image slide")
+        else:
+            print(f"  WARNING: Oh Sacred Heart image not found at {image_path}")
+        
+        return slide_count
 
     def _create_opening_slides(self, prs, liturgical_data, slide_count):
         """Create opening slides following reference template
