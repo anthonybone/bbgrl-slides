@@ -2450,6 +2450,9 @@ class BBGRLSlideGeneratorV2:
 
         # Add Novena Prayer slides at the very end
         slide_count = self._create_novena_prayer_slides(prs, slide_count)
+
+        # Add Salve Regina slides at the very end
+        slide_count = self._create_salve_regina_slides(prs, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -3031,6 +3034,7 @@ class BBGRLSlideGeneratorV2:
                 frame = box.text_frame
                 frame.word_wrap = True
                 frame.vertical_anchor = MSO_ANCHOR.TOP
+                frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
 
                 if data.get("header"):
                     header_para = frame.paragraphs[0]
@@ -3045,40 +3049,257 @@ class BBGRLSlideGeneratorV2:
                     spacer.text = ""
                     spacer.alignment = PP_ALIGN.CENTER
                 else:
+                    # Use first paragraph for first line with label styling if present
+                    def style_line(paragraph, text):
+                        paragraph.alignment = PP_ALIGN.CENTER
+                        yellow = RGBColor(255, 215, 0)
+                        if text.startswith("Priest:"):
+                            label = "Priest:"
+                            rest = text[len(label):].lstrip()
+                            r1 = paragraph.add_run()
+                            r1.text = label + " "
+                            r1.font.name = "Georgia"
+                            r1.font.size = Pt(44)
+                            r1.font.bold = True
+                            r1.font.underline = True
+                            r1.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
+                            r2 = paragraph.add_run()
+                            r2.text = rest
+                            r2.font.name = "Georgia"
+                            r2.font.size = Pt(44)
+                            r2.font.bold = True
+                            r2.font.color.rgb = RGBColor(0, 0, 0)
+                        elif text.startswith("All:"):
+                            label = "All:"
+                            rest = text[len(label):].lstrip()
+                            r1 = paragraph.add_run()
+                            r1.text = label + " "
+                            r1.font.name = "Georgia"
+                            r1.font.size = Pt(44)
+                            r1.font.bold = True
+                            r1.font.underline = True
+                            r1.font.color.rgb = yellow
+                            r2 = paragraph.add_run()
+                            r2.text = rest
+                            r2.font.name = "Georgia"
+                            r2.font.size = Pt(44)
+                            r2.font.bold = True
+                            r2.font.color.rgb = RGBColor(0, 0, 0)
+                        elif text.startswith("(Priest)"):
+                            after = text[len("(Priest)"):]
+                            # Add ( in black
+                            r_open = paragraph.add_run(); r_open.text = "("
+                            r_open.font.name = "Georgia"; r_open.font.size = Pt(44); r_open.font.bold = True; r_open.font.color.rgb = RGBColor(0,0,0)
+                            # Priest in red underlined
+                            r_mid = paragraph.add_run(); r_mid.text = "Priest"; r_mid.font.name = "Georgia"; r_mid.font.size = Pt(44); r_mid.font.bold = True; r_mid.font.underline = True; r_mid.font.color.rgb = RGBColor(0x98,0x00,0x00)
+                            # ) and space and rest in black
+                            r_close = paragraph.add_run(); r_close.text = ") "
+                            r_close.font.name = "Georgia"; r_close.font.size = Pt(44); r_close.font.bold = True; r_close.font.color.rgb = RGBColor(0,0,0)
+                            r_rest = paragraph.add_run(); r_rest.text = after.lstrip()
+                            r_rest.font.name = "Georgia"; r_rest.font.size = Pt(44); r_rest.font.bold = True; r_rest.font.color.rgb = RGBColor(0,0,0)
+                        else:
+                            r = paragraph.add_run()
+                            r.text = text
+                            r.font.name = "Georgia"
+                            r.font.size = Pt(44)
+                            r.font.bold = True
+                            r.font.color.rgb = RGBColor(0, 0, 0)
+
+                    # First line in existing first paragraph
                     first_para = frame.paragraphs[0]
-                    first_para.alignment = PP_ALIGN.CENTER
-                    run = first_para.add_run()
-                    run.text = data["lines"][0]
-                    run.font.name = "Georgia"
-                    run.font.size = Pt(44)
-                    run.font.bold = True
-                    run.font.color.rgb = RGBColor(0, 0, 0)
+                    style_line(first_para, data["lines"][0] if data["lines"] else "")
+                    # Remaining lines as new paragraphs
                     for line in data["lines"][1:]:
                         p = frame.add_paragraph()
-                        p.alignment = PP_ALIGN.CENTER
-                        r = p.add_run()
-                        r.text = line
-                        r.font.name = "Georgia"
-                        r.font.size = Pt(44)
-                        r.font.bold = True
-                        r.font.color.rgb = RGBColor(0, 0, 0)
+                        style_line(p, line)
 
                 if data.get("header"):
+                    # Add lines with label styling
+                    def style_line2(paragraph, text):
+                        paragraph.alignment = PP_ALIGN.CENTER
+                        yellow = RGBColor(255, 215, 0)
+                        if text.startswith("Priest:"):
+                            label = "Priest:"
+                            rest = text[len(label):].lstrip()
+                            r1 = paragraph.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(44); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = RGBColor(0x98,0x00,0x00)
+                            r2 = paragraph.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(44); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        elif text.startswith("All:"):
+                            label = "All:"
+                            rest = text[len(label):].lstrip()
+                            r1 = paragraph.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(44); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = yellow
+                            r2 = paragraph.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(44); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        elif text.startswith("(Priest)"):
+                            after = text[len("(Priest)"):]
+                            r_open = paragraph.add_run(); r_open.text = "("; r_open.font.name = "Georgia"; r_open.font.size = Pt(44); r_open.font.bold = True; r_open.font.color.rgb = RGBColor(0,0,0)
+                            r_mid = paragraph.add_run(); r_mid.text = "Priest"; r_mid.font.name = "Georgia"; r_mid.font.size = Pt(44); r_mid.font.bold = True; r_mid.font.underline = True; r_mid.font.color.rgb = RGBColor(0x98,0x00,0x00)
+                            r_close = paragraph.add_run(); r_close.text = ") "; r_close.font.name = "Georgia"; r_close.font.size = Pt(44); r_close.font.bold = True; r_close.font.color.rgb = RGBColor(0,0,0)
+                            r_rest = paragraph.add_run(); r_rest.text = after.lstrip(); r_rest.font.name = "Georgia"; r_rest.font.size = Pt(44); r_rest.font.bold = True; r_rest.font.color.rgb = RGBColor(0,0,0)
+                        else:
+                            r = paragraph.add_run(); r.text = text; r.font.name = "Georgia"; r.font.size = Pt(44); r.font.bold = True; r.font.color.rgb = RGBColor(0,0,0)
+
                     for line in data["lines"]:
                         p = frame.add_paragraph()
-                        p.alignment = PP_ALIGN.CENTER
-                        r = p.add_run()
-                        r.text = line
-                        r.font.name = "Georgia"
-                        r.font.size = Pt(44)
-                        r.font.bold = True
-                        r.font.color.rgb = RGBColor(0, 0, 0)
+                        style_line2(p, line)
 
                 print(f"Created slide {slide_count}: Novena Prayer ({idx}/5)")
 
             return slide_count
         except Exception as e:
             print(f"  WARNING: Error creating Novena Prayer slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_salve_regina_slides(self, prs, slide_count):
+        """Create seven Salve Regina slides.
+
+        Requirements:
+        - First slide: the first line "Salve Regina" is red and underlined; rest is black.
+        - All other slides: all text black.
+        - Text as big as possible within bounds: use large font with auto-fit enabled.
+        """
+        try:
+            slides = [
+                {
+                    "header_line": "Salve Regina",
+                    "lines": [
+                        "Salve, Regina, Mater misericordiae,",
+                        "vita, dulcedo, et spes nostra, salve."
+                    ]
+                },
+                {
+                    "lines": [
+                        "ad te clamamus",
+                        "exsules filii Evae,",
+                        "ad te suspiramus, gementes et flentes",
+                        "in hac lacrimarum valle."
+                    ]
+                },
+                {
+                    "lines": [
+                        "Eia, ergo, advocata nostra, illos tuos",
+                        "misericordes oculos ad nos converte;",
+                        "et Iesum"
+                    ]
+                },
+                {
+                    "lines": [
+                        "benedictum fructum ventris tui,",
+                        "nobis post hoc exsilium ostende.",
+                        "O clemens, O pia, O dulcis Virgo Maria."
+                    ]
+                },
+                {
+                    "lines": [
+                        "Priest: Pray for us O holy Mother of God, ",
+                        "",
+                        "All: that we may be made worthy of the promises of Christ.",
+                        "",
+                        "Priest: Let us pray"
+                    ]
+                },
+                {
+                    "lines": [
+                        "Grant, Lord God, that we Your servants may rejoice in unfailing health of mind and body and, through the glorious intercession of Blessed Mary ever virgin, may we be set free from present sorrow and come to enjoy eternal happiness"
+                    ]
+                },
+                {
+                    "lines": [
+                        "Through our Lord Jesus Christ Your Son, who lives and reigns with You in the unity of the Holy Spirit, one God, forever and ever.",
+                        "",
+                        "All: AMEN."
+                    ]
+                }
+            ]
+
+            for idx, data in enumerate(slides, start=1):
+                slide_count += 1
+                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+                # Large text box spanning most of the slide
+                box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.33), Inches(6.5))
+                frame = box.text_frame
+                frame.word_wrap = True
+                frame.vertical_anchor = MSO_ANCHOR.TOP
+                frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+
+                red = RGBColor(0x98, 0x00, 0x00)
+                yellow = RGBColor(255, 215, 0)
+
+                if data.get("header_line"):
+                    # First line in red and underlined
+                    p = frame.paragraphs[0]
+                    p.alignment = PP_ALIGN.CENTER
+                    r = p.add_run()
+                    r.text = data["header_line"]
+                    r.font.name = "Georgia"
+                    r.font.size = Pt(60)
+                    r.font.bold = True
+                    r.font.underline = True
+                    r.font.color.rgb = red
+
+                    # Spacer before remaining lines
+                    spacer = frame.add_paragraph()
+                    spacer.text = ""
+                    spacer.alignment = PP_ALIGN.CENTER
+
+                    # Remaining lines with label styling where applicable
+                    for line in data["lines"]:
+                        p2 = frame.add_paragraph()
+                        p2.alignment = PP_ALIGN.CENTER
+                        if line.startswith("Priest:"):
+                            label = "Priest:"
+                            rest = line[len(label):].lstrip()
+                            r1 = p2.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(52); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = red
+                            r2 = p2.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(52); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        elif line.startswith("All:"):
+                            label = "All:"
+                            rest = line[len(label):].lstrip()
+                            r1 = p2.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(52); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = yellow
+                            r2 = p2.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(52); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        else:
+                            r2 = p2.add_run(); r2.text = line; r2.font.name = "Georgia"; r2.font.size = Pt(52); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                else:
+                    # Use first paragraph for first line
+                    if data["lines"]:
+                        p0 = frame.paragraphs[0]
+                        p0.alignment = PP_ALIGN.CENTER
+                        first_line = data["lines"][0]
+                        if first_line.startswith("Priest:"):
+                            label = "Priest:"
+                            rest = first_line[len(label):].lstrip()
+                            r1 = p0.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(52); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = red
+                            r2 = p0.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(52); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        elif first_line.startswith("All:"):
+                            label = "All:"
+                            rest = first_line[len(label):].lstrip()
+                            r1 = p0.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(52); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = yellow
+                            r2 = p0.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(52); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        else:
+                            r0 = p0.add_run(); r0.text = first_line; r0.font.name = "Georgia"; r0.font.size = Pt(52); r0.font.bold = True; r0.font.color.rgb = RGBColor(0,0,0)
+
+                    # Remaining lines
+                    for line in data["lines"][1:]:
+                        p = frame.add_paragraph()
+                        p.alignment = PP_ALIGN.CENTER
+                        if line.startswith("Priest:"):
+                            label = "Priest:"
+                            rest = line[len(label):].lstrip()
+                            r1 = p.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(52); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = red
+                            r2 = p.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(52); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        elif line.startswith("All:"):
+                            label = "All:"
+                            rest = line[len(label):].lstrip()
+                            r1 = p.add_run(); r1.text = label + " "; r1.font.name = "Georgia"; r1.font.size = Pt(52); r1.font.bold = True; r1.font.underline = True; r1.font.color.rgb = yellow
+                            r2 = p.add_run(); r2.text = rest; r2.font.name = "Georgia"; r2.font.size = Pt(52); r2.font.bold = True; r2.font.color.rgb = RGBColor(0,0,0)
+                        else:
+                            r = p.add_run(); r.text = line; r.font.name = "Georgia"; r.font.size = Pt(52); r.font.bold = True; r.font.color.rgb = RGBColor(0,0,0)
+
+                print(f"Created slide {slide_count}: Salve Regina ({idx}/7)")
+
+            return slide_count
+        except Exception as e:
+            print(f"  WARNING: Error creating Salve Regina slides: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
