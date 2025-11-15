@@ -528,9 +528,7 @@ class BBGRLSlideGeneratorV2:
                     "citation": self._extract_psalm_citation(html_content),  # Pass HTML for citation
                     "verses": self._extract_psalm_response_verses(html_content)  # Pass HTML to preserve <br> tags
                 },
-                "gospel_acclamation": {
-                    "verse": self._extract_gospel_acclamation(full_text)
-                },
+                "gospel_acclamation": self._extract_gospel_acclamation(html_content),  # Pass HTML and return dict
                 "gospel": {
                     "citation": self._extract_gospel_citation(full_text),
                     "verses": self._extract_gospel_verses(full_text)
@@ -2065,9 +2063,79 @@ class BBGRLSlideGeneratorV2:
         
         return result if len(result) > 2 else [response, "[Verses not found]"]
 
-    def _extract_gospel_acclamation(self, text):
-        """Extract gospel acclamation"""
-        return "℟. Alleluia, alleluia.\n[Alleluia verse]\n℟. Alleluia, alleluia."
+    def _extract_gospel_acclamation(self, html_content):
+        """Extract gospel acclamation citation and verse from HTML
+        
+        Returns dict with:
+            citation: e.g., "Mk 1:17"
+            verse: e.g., "Come after me, says the Lord,\nand I will make you fishers of men."
+        """
+        try:
+            from bs4 import BeautifulSoup
+            import re
+            
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find "Acclamation before the Gospel" title
+            title_span = soup.find('span', class_='titolo', string=re.compile(r'Acclamation before the Gospel', re.IGNORECASE))
+            
+            if not title_span:
+                print("  WARNING: Could not find Acclamation section")
+                return {"citation": "", "verse": ""}
+            
+            # Get the parent <p> tag which contains both title and citation
+            title_p = title_span.find_parent('p')
+            
+            # Extract citation from <span class="citazione">
+            citation_span = title_p.find('span', class_='citazione')
+            citation = citation_span.get_text().strip() if citation_span else ""
+            
+            # The next <p> tag contains the verse with alleluias
+            verse_p = title_p.find_next_sibling('p')
+            
+            if not verse_p:
+                print("  WARNING: Could not find verse paragraph after acclamation title")
+                return {"citation": citation, "verse": ""}
+            
+            # Extract the verse content (between the two alleluias)
+            # The structure is: ℟. Alleluia, alleluia.<br><br>VERSE TEXT<br><br>℟. Alleluia, alleluia.
+            
+            # Get all text and br tags from the paragraph
+            verse_html = str(verse_p)
+            
+            # Remove the rubrica spans (℟.) and strong tags for alleluia
+            # Pattern: <span class="rubrica">℟.</span> <strong>Alleluia, alleluia.</strong>
+            verse_html = re.sub(r'<span class="rubrica">℟\.</span>\s*<strong>Alleluia, alleluia\.</strong>', '', verse_html, flags=re.IGNORECASE)
+            
+            # Now parse the cleaned HTML to extract just the verse text
+            verse_soup = BeautifulSoup(verse_html, 'html.parser')
+            
+            # Replace <br> with \n
+            for br in verse_soup.find_all('br'):
+                br.replace_with('\n')
+            
+            # Get text and clean up
+            verse_text = verse_soup.get_text()
+            
+            # Remove extra whitespace/newlines at start and end
+            verse_text = verse_text.strip()
+            
+            # Remove multiple consecutive newlines
+            verse_text = re.sub(r'\n\s*\n+', '\n', verse_text)
+            
+            print(f"  Extracted Acclamation: {citation}")
+            print(f"    Verse preview: {verse_text[:60]}...")
+            
+            return {
+                "citation": citation,
+                "verse": verse_text
+            }
+            
+        except Exception as e:
+            print(f"  WARNING: Error extracting gospel acclamation: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"citation": "", "verse": ""}
 
     def _extract_gospel_citation(self, text):
         """Extract gospel citation"""
@@ -3822,6 +3890,16 @@ class BBGRLSlideGeneratorV2:
             else:
                 print("  WARNING: No Responsorial Psalm verses found")
             
+            # Gospel Acclamation
+            gospel_acclamation = liturgical_data.get('mass_readings', {}).get('gospel_acclamation', {})
+            acclamation_citation = gospel_acclamation.get('citation', '')
+            acclamation_verse = gospel_acclamation.get('verse', '')
+            
+            if acclamation_citation and acclamation_verse:
+                slide_count = self._create_gospel_acclamation_slides(prs, acclamation_citation, acclamation_verse, slide_count)
+            else:
+                print("  WARNING: No Gospel Acclamation found")
+            
             return slide_count
             
         except Exception as e:
@@ -4176,6 +4254,167 @@ class BBGRLSlideGeneratorV2:
             
         except Exception as e:
             print(f"  WARNING: Error creating responsorial psalm slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_gospel_acclamation_slides(self, prs, citation, verse, slide_count):
+        """Create Gospel Acclamation slides
+        
+        Creates 2 slides:
+        1. Header slide with title, citation, and alleluia
+        2. Verse slide with verse text and alleluia
+        
+        Args:
+            prs: Presentation object
+            citation: Citation string (e.g., "Mk 1:17")
+            verse: Verse text with line breaks (e.g., "Come after me, says the Lord,\nand I will make you fishers of men.")
+            slide_count: Current slide count
+            
+        Returns:
+            Updated slide count
+        """
+        try:
+            # Slide 1: Header + Citation + Alleluia
+            slide_count = self._create_gospel_acclamation_header_slide(prs, citation, slide_count)
+            
+            # Slide 2: Verse + Alleluia
+            slide_count = self._create_gospel_acclamation_verse_slide(prs, verse, slide_count)
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating gospel acclamation slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+    
+    def _create_gospel_acclamation_header_slide(self, prs, citation, slide_count):
+        """Create first slide with header, citation, and alleluia
+        
+        Layout:
+        - Acclamation before the Gospel (48pt, bold, dark blue)
+        - Citation (36pt)
+        - ℟. Alleluia, alleluia. (40pt, bold)
+        """
+        try:
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box - top anchored for header content
+            left = Inches(0.5)
+            top = Inches(1.5)
+            width = Inches(12.33)
+            height = Inches(6.0)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.TOP
+            text_frame.clear()
+            
+            # Header: "Acclamation before the Gospel"
+            p = text_frame.paragraphs[0]
+            p.text = "Acclamation before the Gospel"
+            p.font.name = "Georgia"
+            p.font.size = Pt(48)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 51, 102)  # Dark blue
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(16)
+            
+            # Citation
+            p = text_frame.add_paragraph()
+            p.text = citation
+            p.font.name = "Georgia"
+            p.font.size = Pt(36)
+            p.font.bold = False
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(24)
+            
+            # Alleluia
+            p = text_frame.add_paragraph()
+            p.text = "℟. Alleluia, alleluia."
+            p.font.name = "Georgia"
+            p.font.size = Pt(40)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            
+            print(f"Created slide {slide_count}: Acclamation before the Gospel (header)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating gospel acclamation header slide: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+    
+    def _create_gospel_acclamation_verse_slide(self, prs, verse, slide_count):
+        """Create second slide with verse text and alleluia
+        
+        Layout:
+        - Verse text with line breaks (44pt for maximum readability)
+        - ℟. Alleluia, alleluia. (40pt, bold)
+        """
+        try:
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box - middle anchored for verse content
+            left = Inches(0.5)
+            top = Inches(1.5)
+            width = Inches(12.33)
+            height = Inches(6.0)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            text_frame.clear()
+            
+            # Verse lines
+            verse_lines = verse.split('\n')
+            for idx, line in enumerate(verse_lines):
+                if not line.strip():
+                    continue
+                
+                p = text_frame.paragraphs[0] if idx == 0 else text_frame.add_paragraph()
+                p.text = line.strip()
+                p.font.name = "Georgia"
+                p.font.size = Pt(44)  # Large for readability
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+                p.space_after = Pt(8)
+            
+            # Add spacing before alleluia
+            p = text_frame.add_paragraph()
+            p.text = ""
+            p.space_after = Pt(16)
+            
+            # Alleluia
+            p = text_frame.add_paragraph()
+            p.text = "℟. Alleluia, alleluia."
+            p.font.name = "Georgia"
+            p.font.size = Pt(40)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            
+            print(f"Created slide {slide_count}: Acclamation before the Gospel (verse)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating gospel acclamation verse slide: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
