@@ -162,10 +162,13 @@ class BBGRLSlideGeneratorV2:
         print(f"Fetching live liturgical data from iBreviary for {target_date.strftime('%B %d, %Y')}...")
         
         try:
+            # Initialize driver once for both Morning Prayer and Readings
+            self._initialize_driver()
+            
             # Fetch Morning Prayer
             morning_prayer_data = self._fetch_morning_prayer_structured(target_date)
             
-            # Fetch daily readings  
+            # Fetch daily readings (reusing the same driver session)
             readings_data = self._fetch_daily_readings_structured(target_date)
             
             # Combine into structured data matching the reference template
@@ -183,6 +186,23 @@ class BBGRLSlideGeneratorV2:
             print(f"Error fetching liturgical data: {e}")
             print("Using fallback template structure...")
             return self._get_fallback_data(target_date)
+        
+        finally:
+            # Clean up driver after fetching all data
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+
+    def _initialize_driver(self):
+        """Initialize Chrome driver in headless mode"""
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        
+        self.driver = webdriver.Chrome(options=chrome_options)
 
     def _navigate_ibreviary_to_date(self, target_date):
         """
@@ -197,15 +217,6 @@ class BBGRLSlideGeneratorV2:
         Returns the full HTML of the Morning Prayer page for the specified date
         """
         try:
-            # Initialize Chrome in headless mode
-            chrome_options = Options()
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
-            
-            self.driver = webdriver.Chrome(options=chrome_options)
             wait = WebDriverWait(self.driver, 10)
             
             print(f"  -> Navigating to iBreviary mobile site...")
@@ -332,11 +343,97 @@ class BBGRLSlideGeneratorV2:
             import traceback
             traceback.print_exc()
             return None
+
+    def _navigate_to_readings_page(self):
+        """
+        Navigate from current page to the Readings page
         
-        finally:
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
+        Steps:
+        1. Click on the "Reading" tab at the top of the page
+        2. Click on the "Readings" link which is underlined
+        
+        Returns the HTML of the Readings page
+        """
+        try:
+            wait = WebDriverWait(self.driver, 10)
+            
+            # Step 1: Click on the "Reading" tab
+            print(f"  -> Clicking 'Reading' tab...")
+            try:
+                # Try to find the Reading link/tab
+                reading_tab = None
+                
+                # Approach 1: By link text
+                try:
+                    reading_tab = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Reading")))
+                except:
+                    pass
+                
+                # Approach 2: By partial link text
+                if not reading_tab:
+                    try:
+                        reading_tab = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "Reading")))
+                    except:
+                        pass
+                
+                # Approach 3: By href containing letture.php or readings
+                if not reading_tab:
+                    try:
+                        reading_tab = wait.until(EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, 'letture.php')]")))
+                    except:
+                        pass
+                
+                if reading_tab:
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", reading_tab)
+                    time.sleep(0.5)
+                    reading_tab.click()
+                    time.sleep(2)
+                else:
+                    print(f"  WARNING: Could not find 'Reading' tab")
+                    return None
+                    
+            except Exception as e:
+                print(f"  WARNING: Error clicking 'Reading' tab: {e}")
+                return None
+            
+            # Step 2: Click on the "Readings" link (underlined)
+            print(f"  -> Clicking 'Readings' link...")
+            try:
+                readings_link = None
+                
+                # Try to find the Readings link
+                for text in ["Readings", "Letture", "readings"]:
+                    try:
+                        readings_link = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, text)))
+                        break
+                    except:
+                        continue
+                
+                if readings_link:
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", readings_link)
+                    time.sleep(0.5)
+                    readings_link.click()
+                    time.sleep(2)
+                else:
+                    print(f"  WARNING: Could not find 'Readings' link")
+                    return None
+                    
+            except Exception as e:
+                print(f"  WARNING: Error clicking 'Readings' link: {e}")
+                return None
+            
+            # Get the final page HTML
+            html_content = self.driver.page_source
+            
+            print(f"  Successfully navigated to Readings page")
+            
+            return html_content
+            
+        except Exception as e:
+            print(f"  Error navigating to Readings: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def _fetch_morning_prayer_structured(self, target_date):
         """
@@ -407,15 +504,19 @@ class BBGRLSlideGeneratorV2:
     def _fetch_daily_readings_structured(self, target_date):
         """
         Fetch daily readings and structure them to match the reference template
+        Uses Selenium navigation to the Readings page
         """
-        # For iBreviary, we might need to adjust URL parameters for specific dates
-        # For now, using current day's readings
-        url = f"{self.base_url}letture.php?s=letture"
-        
         try:
-            response = self.session.get(url)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Navigate to Readings page using Selenium (driver already initialized)
+            print(f"  Fetching Daily Readings using Selenium navigation...")
+            html_content = self._navigate_to_readings_page()
+            
+            if not html_content:
+                print(f"  WARNING: Could not navigate to Readings page, using fallback data")
+                return self._get_fallback_readings()
+            
+            # Parse the HTML content
+            soup = BeautifulSoup(html_content, 'html.parser')
             full_text = soup.get_text()
             
             structured = {
@@ -440,6 +541,8 @@ class BBGRLSlideGeneratorV2:
             
         except Exception as e:
             print(f"Error parsing daily readings: {e}")
+            import traceback
+            traceback.print_exc()
             return self._get_fallback_readings()
 
     def _extract_antiphon_and_psalm_info(self, text, number, text_after_psalmody=None):
@@ -1604,18 +1707,205 @@ class BBGRLSlideGeneratorV2:
             return ""
 
     def _extract_first_reading_citation(self, text):
-        """Extract first reading citation"""
-        return "Rom 9:1-5"  # Fallback - would extract actual citation
+        """Extract first reading citation from iBreviary text"""
+        try:
+            # Look for pattern like "First Reading" followed by citation
+            # Example: "First Reading\nSir 39:6-11" or "FIRST READING\nEph 4:1-7, 11-13"
+            import re
+            
+            # Search for "First Reading" (case insensitive) followed by citation
+            match = re.search(r'(?:First Reading|FIRST READING)\s*\n\s*([\w\s,:.-]+?)\s*\n', text, re.IGNORECASE)
+            if match:
+                citation = match.group(1).strip()
+                print(f"  Found First Reading citation: {citation}")
+                return citation
+            
+            return ""  # Return empty if not found
+            
+        except Exception as e:
+            print(f"  WARNING: Error extracting first reading citation: {e}")
+            return ""
 
     def _extract_first_reading_verses(self, text):
-        """Extract first reading verses"""
-        return [
-            "A reading from the Letter of Saint Paul to the Romans",
-            "[First reading content verse 1]",
-            "[First reading content verse 2]",
-            "[First reading content verse 3]",
-            "The word of the Lord."
-        ]
+        """Extract first reading verses from iBreviary text
+        
+        Extracts content between 'A reading from...' and 'The word of the Lord.'
+        Omits any content before 'A reading from' (like citation, date info, etc.)
+        """
+        try:
+            import re
+            
+            # Find "A reading from" (start marker)
+            # Strategy: Match the intro line which typically ends after book/letter name
+            # Common patterns: "Book of [Name]" or "Letter of Saint Paul to the [Recipients]" or "[Gospel Name]"
+            start_match = re.search(
+                r'A reading from (?:the )?(?:'
+                r'Book of [^.\n]{5,40}\.?|'  # Book of Sirach
+                r'Letter of (?:Saint )?Paul to the [^.\n]{5,40}\.?|'  # Letter of Paul to the Ephesians
+                r'(?:First|Second|Third) Letter of [^.\n]{5,40}\.?|'  # First Letter of John
+                r'Gospel according to [^.\n]{5,40}\.?|'  # Gospel according to Matthew
+                r'(?:Prophet )?[A-Z][a-z]+ [0-9:, -]+\.?'  # Isaiah 61:10-11
+                r')',
+                text, re.IGNORECASE
+            )
+            
+            if not start_match:
+                # Fallback: simple pattern matching to first period (but limit to 100 chars)
+                start_match = re.search(r'A reading from [^\n]{10,100}?\.', text, re.IGNORECASE)
+            if not start_match:
+                print(f"  WARNING: Could not find 'A reading from' in text")
+                return []
+            
+            start_pos = start_match.start()
+            
+            # Find "The word of the Lord" (end marker) - be more flexible with punctuation
+            end_match = re.search(r'The word of the Lord\.?', text[start_pos:], re.IGNORECASE)
+            if not end_match:
+                print(f"  WARNING: Could not find 'The word of the Lord' in text")
+                return []
+            
+            # Extract the content between markers (including both markers)
+            end_pos = start_pos + end_match.end()
+            reading_text = text[start_pos:end_pos].strip()
+            
+            # Clean up special characters (□ symbols from iBreviary HTML)
+            reading_text = reading_text.replace('\u25a1', '')
+            reading_text = reading_text.replace('□', '')
+            reading_text = re.sub(r'\s+', ' ', reading_text)  # Normalize whitespace
+            
+            # Extract the intro line from normalized text
+            # Find the end of "A reading from..." sentence (first period, or after book/letter name)
+            # Common patterns end around 40-80 characters after "A reading from"
+            reading_from_match = re.search(r'A reading from ', reading_text, re.IGNORECASE)
+            if reading_from_match:
+                start_of_intro = reading_from_match.start()
+                # Look for first period within reasonable distance (30-120 chars)
+                remaining = reading_text[start_of_intro:]
+                period_match = re.search(r'[.!?]', remaining[15:120])  # Skip first 15 chars to avoid "St."
+                
+                if period_match:
+                    end_of_intro = start_of_intro + 15 + period_match.end()
+                    reading_intro = reading_text[start_of_intro:end_of_intro].strip()
+                else:
+                    # No period found, take first ~80 chars
+                    reading_intro = remaining[:80].strip()
+                    if reading_intro and reading_intro[-1] not in '.!?':
+                        reading_intro += '.'
+            else:
+                # Fallback
+                reading_intro = start_match.group(0).strip()
+                reading_intro = re.sub(r'\s+', ' ', reading_intro)
+            
+            # Ensure intro ends with a period
+            if reading_intro and reading_intro[-1] not in '.!?':
+                reading_intro += '.'
+            
+            # Get content after intro
+            content_after_intro = reading_text[len(reading_intro):].strip()
+            
+            # If content starts immediately with a capital letter (no space after intro),
+            # it means they were concatenated. The intro should be complete, so content
+            # should start fresh. Ensure proper separation.
+            # Example fix: "EphesiansBrothers" -> intro="...Ephesians." content="Brothers..."
+            if content_after_intro and len(reading_intro) > 10:
+                # Check if we accidentally included content in the intro
+                # Look for pattern like "BookNameCapitalLetter" at the end of intro
+                # Match: ...Ephesians.Brothers -> split before "Brothers"
+                match = re.search(r'([a-z])([A-Z][a-z])', reading_intro)
+                if match:
+                    # Found concatenation point - split there
+                    split_pos = match.start(2)
+                    content_after_intro = reading_intro[split_pos:] + ' ' + content_after_intro
+                    reading_intro = reading_intro[:split_pos].strip()
+                    if reading_intro and reading_intro[-1] not in '.!?':
+                        reading_intro += '.'
+            
+            # Remove "The word of the Lord." from the end to process main content
+            the_word_ending = 'The word of the Lord.'
+            if content_after_intro.endswith(the_word_ending):
+                main_content = content_after_intro[:-len(the_word_ending)].strip()
+            elif content_after_intro.lower().endswith('the word of the lord'):
+                # Handle case without period
+                main_content = content_after_intro[:-len('the word of the lord')].strip()
+            else:
+                # Fallback: search backwards for "The word of the Lord"
+                word_match = re.search(r'The word of the Lord\.?', content_after_intro, re.IGNORECASE)
+                if word_match:
+                    main_content = content_after_intro[:word_match.start()].strip()
+                else:
+                    main_content = content_after_intro
+            
+            # Clean up stray periods from iBreviary HTML errors
+            # Remove period before space + lowercase word (e.g., "studies. the" -> "studies the")
+            main_content = re.sub(r'\.\s+([a-z])', r' \1', main_content)
+            # Remove period after comma (e.g., "I,. a" -> "I, a")
+            main_content = re.sub(r',\s*\.\s+', ', ', main_content)
+            
+            # Start building the lines list - 'A reading from...' gets its own line
+            lines = [reading_intro]
+            
+            # Split main content into manageable chunks
+            # First, ensure there's proper separation after periods and normalize spacing
+            # Add space after periods if missing (handles "Sirach.If" -> "Sirach. If")
+            main_content = re.sub(r'([.!?])([A-Z])', r'\1 \2', main_content)
+            
+            # Normalize spacing after punctuation: ensure single space after commas, semicolons, colons
+            main_content = re.sub(r'([,:;])\s+', r'\1 ', main_content)
+            main_content = re.sub(r'([,:;])([^\s])', r'\1 \2', main_content)  # Add space if missing
+            
+            # Split at sentence boundaries (period/!/?  followed by space and capital letter)
+            # But be careful not to split things like "St. Paul" or abbreviations
+            sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z][a-z])', main_content)
+            
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if not sentence:
+                    continue
+                
+                # Split long sentences at natural break points (80 char limit)
+                if len(sentence) > 80:
+                    # Try to split at commas, semicolons, colons, or conjunctions
+                    # Don't capture separators - we'll keep them with the preceding text
+                    parts = re.split(r'(?<=[,;:])\s+(?=[A-Z])', sentence)
+                    
+                    for part in parts:
+                        part = part.strip()
+                        if not part:
+                            continue
+                        
+                        # If this part is still too long, try to split on "and" or "but"
+                        if len(part) > 80:
+                            subparts = re.split(r'\s+(and|but)\s+', part, flags=re.IGNORECASE)
+                            current_line = ''
+                            
+                            for i, subpart in enumerate(subparts):
+                                if i % 2 == 1:  # This is a conjunction
+                                    current_line += ' ' + subpart + ' '
+                                else:
+                                    if current_line and len(current_line + subpart) > 80:
+                                        lines.append(current_line.strip())
+                                        current_line = subpart
+                                    else:
+                                        current_line += subpart
+                            
+                            if current_line.strip():
+                                lines.append(current_line.strip())
+                        else:
+                            lines.append(part)
+                else:
+                    lines.append(sentence)
+            
+            # Add closing on separate line
+            lines.append('The word of the Lord.')
+            
+            print(f"  Extracted First Reading with {len(lines)} lines")
+            return lines
+            
+        except Exception as e:
+            print(f"  WARNING: Error extracting first reading verses: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
 
     def _extract_psalm_citation(self, text):
         """Extract responsorial psalm citation"""
@@ -1774,7 +2064,6 @@ class BBGRLSlideGeneratorV2:
         slide_count = self._create_lords_prayer_slide(prs, slide_count)
         slide_count = self._create_concluding_prayer_slides(prs, liturgical_data, slide_count)
         slide_count = self._create_sacred_heart_hymns(prs, liturgical_data, slide_count)
-        slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
         slide_count = self._create_post_communion_prayers(prs, liturgical_data, slide_count)
         # Commented out: These sections create placeholder/empty slides
         # slide_count = self._create_transition_slides(prs, slide_count)
@@ -1792,6 +2081,9 @@ class BBGRLSlideGeneratorV2:
         
         # Add Oh Sacred Heart prayer text slides
         slide_count = self._create_oh_sacred_heart_prayer_slides(prs, slide_count)
+        
+        # Add First Reading (Mass readings) at the very end
+        slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
         
         # Save presentation
         output_dir = "output_v2"
@@ -3364,9 +3656,164 @@ class BBGRLSlideGeneratorV2:
         return slide_count + 6  # Placeholder
 
     def _create_mass_readings_section(self, prs, liturgical_data, slide_count):
-        """Create mass readings section following reference template"""
-        # Implementation would follow reference structure
-        return slide_count + 19  # Placeholder
+        """Create mass readings section - specifically First Reading"""
+        try:
+            first_reading = liturgical_data.get('mass_readings', {}).get('first_reading', {})
+            citation = first_reading.get('citation', '')
+            verses = first_reading.get('verses', [])
+            
+            if not verses:
+                print("  WARNING: No First Reading verses found, skipping section")
+                return slide_count
+            
+            # Create slides for First Reading
+            slide_count = self._create_first_reading_slides(prs, citation, verses, slide_count)
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating mass readings section: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_first_reading_slides(self, prs, citation, verses, slide_count):
+        """Create slides for First Reading, spreading content across multiple slides as needed
+        
+        Args:
+            prs: Presentation object
+            citation: Citation string (e.g., "Sir 39:6-11")
+            verses: List of verse lines
+            slide_count: Current slide count
+            
+        Returns:
+            Updated slide count
+        """
+        try:
+            if not verses:
+                return slide_count
+            
+            # Content slides: Split verses across multiple slides
+            # First slide has header, so use fewer content lines (4)
+            # Subsequent slides can have moderate content lines (5 to prevent overflow)
+            current_slide_lines = []
+            is_first_slide = True
+            
+            for line in verses:
+                current_slide_lines.append(line)
+                
+                # Determine max lines based on whether this is first slide
+                max_lines = 4 if is_first_slide else 5
+                
+                # Check if we should create a slide
+                if len(current_slide_lines) >= max_lines:
+                    slide_count = self._create_first_reading_content_slide(
+                        prs, current_slide_lines, slide_count, 
+                        is_first=is_first_slide, citation=citation if is_first_slide else None
+                    )
+                    current_slide_lines = []
+                    is_first_slide = False
+            
+            # Create final slide with remaining lines
+            if current_slide_lines:
+                slide_count = self._create_first_reading_content_slide(
+                    prs, current_slide_lines, slide_count,
+                    is_first=is_first_slide, citation=citation if is_first_slide else None
+                )
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating first reading slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_first_reading_content_slide(self, prs, lines, slide_count, is_first=False, citation=None):
+        """Create a single content slide for First Reading
+        
+        Args:
+            prs: Presentation object
+            lines: List of text lines for this slide
+            slide_count: Current slide count
+            is_first: Whether this is the first content slide (should have header)
+            citation: Citation string to display in header (only for first slide)
+            
+        Returns:
+            Updated slide count
+        """
+        slide_count += 1
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+        
+        # Add text box for content
+        text_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.33), Inches(6.5))
+        text_frame = text_box.text_frame
+        text_frame.word_wrap = True
+        text_frame.vertical_anchor = MSO_ANCHOR.TOP
+        
+        para_index = 0
+        
+        # Add header if this is the first slide
+        if is_first:
+            # "First Reading" header
+            para = text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.space_after = Pt(16)
+            
+            run = para.add_run()
+            run.text = "First Reading"
+            run.font.name = "Georgia"
+            run.font.size = Pt(48)
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 0, 139)  # Dark blue
+            
+            # Add citation if provided
+            if citation:
+                para = text_frame.add_paragraph()
+                para.alignment = PP_ALIGN.CENTER
+                para.space_after = Pt(20)
+                
+                run = para.add_run()
+                run.text = citation
+                run.font.name = "Georgia"
+                run.font.size = Pt(36)
+                run.font.bold = False
+                run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+            
+            para_index = 2
+        
+        # Add content lines
+        for i, line in enumerate(lines):
+            if i == 0 and para_index == 0:
+                para = text_frame.paragraphs[0]
+            else:
+                para = text_frame.add_paragraph()
+            
+            para.alignment = PP_ALIGN.CENTER
+            
+            # Special handling for first line (A reading from...)
+            if i == 0:
+                # First content line should have space after to separate from content
+                para.space_after = Pt(12)
+                para.space_before = Pt(0)
+            # Improved spacing between other lines
+            elif i == 1 and not is_first:
+                # Second line of non-header slide: add top spacing
+                para.space_before = Pt(8)
+            elif line.strip():  # Non-empty lines
+                para.space_before = Pt(8)
+            else:  # Empty lines (paragraph breaks)
+                para.space_before = Pt(16)
+            
+            run = para.add_run()
+            run.text = line
+            run.font.name = "Georgia"
+            run.font.size = Pt(32)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Black
+        
+        slide_type = "(header + content)" if is_first else "(content)"
+        print(f"Created slide {slide_count}: First Reading {slide_type} ({len(lines)} lines)")
+        return slide_count
 
     def _create_post_communion_prayers(self, prs, liturgical_data, slide_count):
         """Create static post-communion prayers following reference template"""
