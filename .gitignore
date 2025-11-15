@@ -8,6 +8,9 @@ debug_files/
 debug_*.py
 debug_*.txt
 debug_*.html
+check_*.py
+find_*.py
+verify_*.py
 intercessions_*.txt
 final_*.txt
 test_output*.txt

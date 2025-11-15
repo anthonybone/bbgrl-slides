@@ -530,8 +530,8 @@ class BBGRLSlideGeneratorV2:
                 },
                 "gospel_acclamation": self._extract_gospel_acclamation(html_content),  # Pass HTML and return dict
                 "gospel": {
-                    "citation": self._extract_gospel_citation(full_text),
-                    "verses": self._extract_gospel_verses(full_text)
+                    "citation": self._extract_gospel_citation(html_content),  # Pass HTML
+                    "content": self._extract_gospel_verses(html_content)  # Pass HTML, returns dict
                 }
             }
             
@@ -2137,19 +2137,158 @@ class BBGRLSlideGeneratorV2:
             traceback.print_exc()
             return {"citation": "", "verse": ""}
 
-    def _extract_gospel_citation(self, text):
-        """Extract gospel citation"""
-        return "Lk 14:1-6"
+    def _extract_gospel_citation(self, html_content):
+        """Extract gospel citation from HTML
+        
+        Returns citation string (e.g., "Mt 16:13-19")
+        """
+        try:
+            from bs4 import BeautifulSoup
+            import re
+            
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find "Gospel" title
+            title_span = soup.find('span', class_='titolo', string=re.compile(r'^Gospel$', re.IGNORECASE))
+            
+            if not title_span:
+                print("  WARNING: Could not find Gospel section")
+                return ""
+            
+            # Get the parent <p> tag which contains both title and citation
+            title_p = title_span.find_parent('p')
+            
+            # Extract citation from <span class="citazione">
+            citation_span = title_p.find('span', class_='citazione')
+            citation = citation_span.get_text().strip() if citation_span else ""
+            
+            return citation
+            
+        except Exception as e:
+            print(f"  WARNING: Error extracting gospel citation: {e}")
+            return ""
 
-    def _extract_gospel_verses(self, text):
-        """Extract gospel verses"""
-        return [
-            "✠ A reading from the holy Gospel according to Luke",
-            "[Gospel content verse 1]",
-            "[Gospel content verse 2]", 
-            "[Gospel content verse 3]",
-            "The Gospel of the Lord."
-        ]
+    def _extract_gospel_verses(self, html_content):
+        """Extract gospel reading from HTML
+        
+        Returns dict with:
+            intro_text: Short intro line (e.g., "You are Peter, and upon this rock I will build my Church.")
+            proclamation: "✠ A reading from the holy Gospel according to [Evangelist]"
+            text: Main gospel text with line breaks preserved
+            closing: "The Gospel of the Lord."
+            response: "Praise to you, Lord Jesus Christ."
+        """
+        try:
+            from bs4 import BeautifulSoup
+            import re
+            
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find "Gospel" title
+            title_span = soup.find('span', class_='titolo', string=re.compile(r'^Gospel$', re.IGNORECASE))
+            
+            if not title_span:
+                print("  WARNING: Could not find Gospel section")
+                return {"intro_text": "", "proclamation": "", "text": "", "closing": "", "response": ""}
+            
+            # Get the parent <p> tag
+            title_p = title_span.find_parent('p')
+            
+            # The next <p> is the intro text
+            intro_p = title_p.find_next_sibling('p')
+            intro_text = intro_p.get_text().strip() if intro_p else ""
+            
+            # The next <p> contains the proclamation and the main gospel text
+            gospel_p = intro_p.find_next_sibling('p') if intro_p else None
+            
+            if not gospel_p:
+                print("  WARNING: Could not find Gospel text paragraph")
+                return {"intro_text": intro_text, "proclamation": "", "text": "", "closing": "", "response": ""}
+            
+            # Extract proclamation (✠ A reading from the holy Gospel according to...)
+            # This is in a <strong> tag after the ✠ symbol
+            proclamation = ""
+            for strong in gospel_p.find_all('strong'):
+                text = strong.get_text().strip()
+                if 'reading from the holy Gospel' in text:
+                    # Add the ✠ symbol
+                    proclamation = "✠ " + text
+                    break
+            
+            # Extract the main gospel text (after proclamation, before "The Gospel of the Lord.")
+            gospel_html = str(gospel_p)
+            
+            # Remove the proclamation part (everything up to and including the first </strong><br><br>)
+            gospel_html = re.sub(r'.*?</strong><br><br>', '', gospel_html, count=1, flags=re.DOTALL)
+            
+            # Find where "The Gospel of the Lord" starts and extract everything before it
+            gospel_end_match = re.search(r'<strong>The Gospel of the Lord\.</strong>', gospel_html, re.IGNORECASE)
+            
+            if gospel_end_match:
+                gospel_text_html = gospel_html[:gospel_end_match.start()]
+            else:
+                gospel_text_html = gospel_html
+            
+            # Parse the gospel text HTML to preserve line breaks
+            gospel_soup = BeautifulSoup(gospel_text_html, 'html.parser')
+            
+            # Remove rubrica spans (liturgical directions)
+            for rubrica in gospel_soup.find_all('span', class_='rubrica'):
+                rubrica.decompose()
+            
+            # Replace <br> with \n
+            for br in gospel_soup.find_all('br'):
+                br.replace_with('\n')
+            
+            # Get text and clean up
+            gospel_text = gospel_soup.get_text()
+            
+            # Replace &nbsp; sequences with proper indentation
+            gospel_text = re.sub(r'\xa0+', '   ', gospel_text)
+            
+            # Clean up extra whitespace but preserve intentional line breaks
+            gospel_text = re.sub(r' +', ' ', gospel_text)  # Multiple spaces to single
+            gospel_text = re.sub(r'\n +', '\n   ', gospel_text)  # Preserve indentation at start of lines
+            gospel_text = gospel_text.strip()
+            
+            # Remove any remaining HTML tags or special markers
+            gospel_text = re.sub(r'<[^>]+>', '', gospel_text)
+            
+            # Remove liturgical directions that may have slipped through
+            # Pattern: "At the end of the Gospel..." or "Then he kisses..." etc.
+            gospel_text = re.sub(r'At the end of the Gospel[^\n]*\n?', '', gospel_text, flags=re.IGNORECASE)
+            gospel_text = re.sub(r'Then he kisses[^\n]*\n?', '', gospel_text, flags=re.IGNORECASE)
+            gospel_text = re.sub(r'Through the words of the Gospel[^\n]*\n?', '', gospel_text, flags=re.IGNORECASE)
+            
+            # Remove the proclamation if it appears at the start of the text
+            # It might start with or without the ✠ symbol
+            if gospel_text.startswith('✠'):
+                # Find the end of the first line (the proclamation)
+                first_newline = gospel_text.find('\n')
+                if first_newline > 0:
+                    gospel_text = gospel_text[first_newline+1:].strip()
+            elif gospel_text.startswith('A reading from the holy Gospel'):
+                # Find the end of the proclamation line
+                first_newline = gospel_text.find('\n')
+                if first_newline > 0:
+                    gospel_text = gospel_text[first_newline+1:].strip()
+            
+            print(f"  Extracted Gospel with {len(gospel_text)} characters")
+            print(f"    Intro: {intro_text[:60]}...")
+            
+            return {
+                "intro_text": intro_text,
+                "proclamation": proclamation,
+                "text": gospel_text,
+                "closing": "The Gospel of the Lord.",
+                "response": "Praise to you, Lord Jesus Christ."
+            }
+            
+        except Exception as e:
+            print(f"  WARNING: Error extracting gospel verses: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"intro_text": "", "proclamation": "", "text": "", "closing": "", "response": ""}
 
     def _get_static_devotional_content(self):
         """
@@ -3900,6 +4039,16 @@ class BBGRLSlideGeneratorV2:
             else:
                 print("  WARNING: No Gospel Acclamation found")
             
+            # Gospel
+            gospel = liturgical_data.get('mass_readings', {}).get('gospel', {})
+            gospel_citation = gospel.get('citation', '')
+            gospel_content = gospel.get('content', {})
+            
+            if gospel_citation and gospel_content:
+                slide_count = self._create_gospel_slides(prs, gospel_citation, gospel_content, slide_count)
+            else:
+                print("  WARNING: No Gospel reading found")
+            
             return slide_count
             
         except Exception as e:
@@ -4415,6 +4564,319 @@ class BBGRLSlideGeneratorV2:
             
         except Exception as e:
             print(f"  WARNING: Error creating gospel acclamation verse slide: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+
+    def _create_gospel_slides(self, prs, citation, gospel_content, slide_count):
+        """Create Gospel reading slides
+        
+        Creates multiple slides:
+        1. Header slide with title, citation, intro text, and proclamation
+        2-N. Text slides with gospel content (chunked intelligently)
+        Last. Closing slide with "The Gospel of the Lord" and response
+        
+        Args:
+            prs: Presentation object
+            citation: Citation string (e.g., "Mt 16:13-19")
+            gospel_content: Dict with intro_text, proclamation, text, closing, response
+            slide_count: Current slide count
+            
+        Returns:
+            Updated slide count
+        """
+        try:
+            intro_text = gospel_content.get('intro_text', '')
+            proclamation = gospel_content.get('proclamation', '')
+            gospel_text = gospel_content.get('text', '')
+            closing = gospel_content.get('closing', 'The Gospel of the Lord.')
+            response = gospel_content.get('response', 'Praise to you, Lord Jesus Christ.')
+            
+            # Slide 1: Header with title, citation, intro, and proclamation
+            slide_count = self._create_gospel_header_slide(prs, citation, intro_text, proclamation, slide_count)
+            
+            # Chunk the gospel text into slides (aim for ~300 chars per slide for readable 32pt font)
+            text_chunks = self._chunk_gospel_text(gospel_text)
+            
+            # Create slides for gospel text
+            for chunk in text_chunks:
+                slide_count = self._create_gospel_text_slide(prs, chunk, slide_count)
+            
+            # Final slide: Closing and response
+            slide_count = self._create_gospel_closing_slide(prs, closing, response, slide_count)
+            
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating gospel slides: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+    
+    def _chunk_gospel_text(self, text, max_chars=300):
+        """Chunk gospel text intelligently at paragraph/sentence boundaries
+        
+        Args:
+            text: Full gospel text with \n line breaks
+            max_chars: Target maximum characters per chunk (300 chars ~10-12 lines at 32pt)
+            
+        Returns:
+            List of text chunks
+        """
+        # Split by double newlines (paragraphs) first
+        paragraphs = text.split('\n\n')
+        
+        chunks = []
+        current_chunk = []
+        current_length = 0
+        
+        for para in paragraphs:
+            para_length = len(para)
+            
+            # If the paragraph itself is too long, break it at single newlines
+            if para_length > max_chars:
+                # Save current chunk if it exists
+                if current_chunk:
+                    chunks.append('\n\n'.join(current_chunk))
+                    current_chunk = []
+                    current_length = 0
+                
+                # Split long paragraph at single newlines (line breaks)
+                lines = para.split('\n')
+                temp_chunk = []
+                temp_length = 0
+                
+                for line in lines:
+                    line_length = len(line)
+                    
+                    # If adding this line would exceed max_chars, save chunk and start new
+                    if temp_length + line_length > max_chars and temp_chunk:
+                        chunks.append('\n'.join(temp_chunk))
+                        temp_chunk = [line]
+                        temp_length = line_length
+                    else:
+                        temp_chunk.append(line)
+                        temp_length += line_length + 1  # +1 for \n
+                
+                # Add the remaining lines from this long paragraph
+                if temp_chunk:
+                    chunks.append('\n'.join(temp_chunk))
+                    
+            # If adding this paragraph would exceed max_chars, start new chunk
+            elif current_length + para_length > max_chars and current_chunk:
+                chunks.append('\n\n'.join(current_chunk))
+                current_chunk = [para]
+                current_length = para_length
+            else:
+                current_chunk.append(para)
+                current_length += para_length + 2  # +2 for \n\n
+        
+        # Add remaining chunk
+        if current_chunk:
+            chunks.append('\n\n'.join(current_chunk))
+        
+        return chunks
+    
+    def _create_gospel_header_slide(self, prs, citation, intro_text, proclamation, slide_count):
+        """Create first Gospel slide with title, citation, intro, and proclamation
+        
+        Layout:
+        - Gospel (48pt, bold, dark blue)
+        - Citation (36pt)
+        - Blank line
+        - Intro text (32pt italic)
+        - Blank line  
+        - Proclamation (32pt)
+        """
+        try:
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box - top anchored
+            left = Inches(0.5)
+            top = Inches(1.0)
+            width = Inches(12.33)
+            height = Inches(6.5)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.TOP
+            text_frame.clear()
+            
+            # Header: "Gospel"
+            p = text_frame.paragraphs[0]
+            p.text = "Gospel"
+            p.font.name = "Georgia"
+            p.font.size = Pt(48)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 51, 102)  # Dark blue
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(12)
+            
+            # Citation
+            p = text_frame.add_paragraph()
+            p.text = citation
+            p.font.name = "Georgia"
+            p.font.size = Pt(36)
+            p.font.bold = False
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(20)
+            
+            # Intro text (italic)
+            if intro_text:
+                p = text_frame.add_paragraph()
+                p.text = intro_text
+                p.font.name = "Georgia"
+                p.font.size = Pt(32)
+                p.font.italic = True
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+                p.space_after = Pt(20)
+            
+            # Proclamation
+            if proclamation:
+                p = text_frame.add_paragraph()
+                p.text = proclamation
+                p.font.name = "Georgia"
+                p.font.size = Pt(32)
+                p.font.bold = True
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+            
+            print(f"Created slide {slide_count}: Gospel (header)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating gospel header slide: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+    
+    def _create_gospel_text_slide(self, prs, text_chunk, slide_count):
+        """Create a slide with gospel text content
+        
+        Layout:
+        - Gospel text with preserved line breaks (32pt)
+        """
+        try:
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box - top anchored for readability
+            left = Inches(0.5)
+            top = Inches(1.0)
+            width = Inches(12.33)
+            height = Inches(6.5)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.TOP
+            text_frame.clear()
+            
+            # Split text by newlines and add as separate paragraphs
+            lines = text_chunk.split('\n')
+            
+            for idx, line in enumerate(lines):
+                if not line.strip():
+                    # Empty line - add spacing
+                    if idx > 0:
+                        p = text_frame.add_paragraph()
+                        p.text = ""
+                        p.space_after = Pt(8)
+                    continue
+                
+                p = text_frame.paragraphs[0] if idx == 0 else text_frame.add_paragraph()
+                p.text = line
+                p.font.name = "Georgia"
+                p.font.size = Pt(32)
+                p.font.color.rgb = RGBColor(0, 0, 0)
+                p.alignment = PP_ALIGN.CENTER
+                p.space_after = Pt(6)
+            
+            print(f"Created slide {slide_count}: Gospel (text)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating gospel text slide: {e}")
+            import traceback
+            traceback.print_exc()
+            return slide_count
+    
+    def _create_gospel_closing_slide(self, prs, closing, response, slide_count):
+        """Create final Gospel slide with closing and response
+        
+        Layout:
+        - The Gospel of the Lord. (40pt, bold)
+        - Blank line
+        - All reply: (32pt italic)
+        - Blank line
+        - Praise to you, Lord Jesus Christ. (40pt, bold)
+        """
+        try:
+            from pptx.util import Inches, Pt
+            from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+            from pptx.dml.color import RGBColor
+            
+            slide_count += 1
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add text box - middle anchored
+            left = Inches(0.5)
+            top = Inches(2.0)
+            width = Inches(12.33)
+            height = Inches(5.0)
+            
+            textbox = slide.shapes.add_textbox(left, top, width, height)
+            text_frame = textbox.text_frame
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            text_frame.clear()
+            
+            # Closing: "The Gospel of the Lord."
+            p = text_frame.paragraphs[0]
+            p.text = closing
+            p.font.name = "Georgia"
+            p.font.size = Pt(40)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(24)
+            
+            # "All reply:"
+            p = text_frame.add_paragraph()
+            p.text = "All reply:"
+            p.font.name = "Georgia"
+            p.font.size = Pt(32)
+            p.font.italic = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            p.space_after = Pt(24)
+            
+            # Response: "Praise to you, Lord Jesus Christ."
+            p = text_frame.add_paragraph()
+            p.text = response
+            p.font.name = "Georgia"
+            p.font.size = Pt(40)
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
+            p.alignment = PP_ALIGN.CENTER
+            
+            print(f"Created slide {slide_count}: Gospel (closing)")
+            return slide_count
+            
+        except Exception as e:
+            print(f"  WARNING: Error creating gospel closing slide: {e}")
             import traceback
             traceback.print_exc()
             return slide_count
