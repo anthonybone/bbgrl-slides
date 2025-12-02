@@ -165,6 +165,23 @@ class bbgrlslidegeneratorv1:
 			# This skips the "Tune:" and "Text:" segments that come before PSALMODY
 			psalmody_pos = full_text.upper().find("PSALMODY")
 
+			# If PSALMODY not found, perform an early full retry once (driver re-init)
+			if psalmody_pos < 0:
+				print("  WARNING: PSALMODY marker not found; retrying full navigation once...")
+				# Reinitialize Selenium driver and attempt navigation again
+				try:
+					self._initialize_driver()
+					html_content_retry = self._navigate_ibreviary_to_date(target_date)
+					if html_content_retry:
+						soup = BeautifulSoup(html_content_retry, "html.parser")
+						full_text = soup.get_text(separator="\n")
+						psalmody_pos = full_text.upper().find("PSALMODY")
+						print("  ✓ Retry succeeded: PSALMODY located")
+					else:
+						print("  WARNING: Retry navigation failed; proceeding with original content")
+				except Exception as e:
+					print(f"  WARNING: Retry initialization failed: {e}")
+
 			if psalmody_pos >= 0:
 				# Extract only the text after PSALMODY for all parsing
 				text_after_psalmody = full_text[psalmody_pos:]
@@ -178,7 +195,7 @@ class bbgrlslidegeneratorv1:
 				# Fallback: use full text if PSALMODY not found
 				text_after_psalmody = full_text
 				psalmody_soup = soup
-				print(f"  WARNING: PSALMODY marker not found, using full text")
+				print(f"  WARNING: PSALMODY marker not found after retry, using full text")
 
 			# Extract and structure the content to match reference format
 			structured = {
@@ -929,66 +946,57 @@ class bbgrlslidegeneratorv1:
 		return slide_count
 
 	def _create_responsory_section(self, prs, liturgical_data, slide_count):
+		"""Create responsory slides matching expected formatting (no speaker labels).
+
+		Expected pattern for three slides:
+		1. Title 'RESPONSORY' + four-line block (two lines then em-dash repeat)
+		2. Two-line block (statement + em-dash response)
+		3. Three-line block beginning with Glory + em-dash repeated response lines.
+		"""
 		responsory_verses = (
 			liturgical_data.get('morning_prayer', {}).get('reading', {}).get('responsory', [])
 		)
 		if not responsory_verses:
-			print(f"  WARNING: No responsory data available, skipping responsory section")
+			print(f"\tWARNING: No responsory data available, skipping responsory section")
 			return slide_count
-		for verse in responsory_verses:
+		for idx, verse in enumerate(responsory_verses):
 			slide_count += 1
 			slide = prs.slides.add_slide(prs.slide_layouts[6])
-			include_title = verse.get('include_title', False)
-			speaker = verse.get('speaker', 'Priest')
-			if speaker == 'All':
-				speaker_color = self.reference_template['formatting_rules']['all_color']
-				speaker_label = "(All) "
-			else:
-				speaker_color = self.reference_template['formatting_rules']['priest_color']
-				speaker_label = "(Priest) "
-			if include_title:
+			raw_lines = [ln.strip() for ln in verse.get('text', '').split('\n') if ln.strip()]
+			text_lines = raw_lines[:]
+			
+			if verse.get('include_title'):
+				# Title at top
 				title_box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(11.33), Inches(1))
 				title_frame = title_box.text_frame
-				title_frame.word_wrap = True
 				title_frame.text = "RESPONSORY"
-				for paragraph in title_frame.paragraphs:
-					paragraph.alignment = PP_ALIGN.CENTER
-					for run in paragraph.runs:
-						run.font.size = Pt(48)
-						run.font.bold = True
-						run.font.color.rgb = self.reference_template['formatting_rules']['title_color']
-				text_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.75), Inches(12.33), Inches(5))
+				title_p = title_frame.paragraphs[0]
+				title_p.alignment = PP_ALIGN.CENTER
+				for run in title_p.runs:
+					run.font.size = Pt(48)
+					run.font.bold = True
+					run.font.color.rgb = self.reference_template['formatting_rules']['title_color']
+				content_top = Inches(1.75)
 			else:
-				text_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
-			text_frame = text_box.text_frame
-			text_frame.word_wrap = True
-			text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
-			lines = verse['text'].split('\n')
-			para = text_frame.paragraphs[0]
-			para.alignment = PP_ALIGN.CENTER
-			speaker_run = para.add_run()
-			speaker_run.text = speaker_label
-			speaker_run.font.size = Pt(36)
-			speaker_run.font.name = "Georgia"
-			speaker_run.font.bold = True
-			speaker_run.font.color.rgb = speaker_color
-			text_run = para.add_run()
-			text_run.text = lines[0]
-			text_run.font.size = Pt(36)
-			text_run.font.name = "Georgia"
-			text_run.font.bold = True
-			text_run.font.color.rgb = RGBColor(0, 0, 0)
-			for line in lines[1:]:
-				if line.strip():
-					new_para = text_frame.add_paragraph()
-					new_para.alignment = PP_ALIGN.CENTER
-					line_run = new_para.add_run()
-					line_run.text = line
-					line_run.font.size = Pt(36)
-					line_run.font.name = "Georgia"
-					line_run.font.bold = True
-					line_run.font.color.rgb = RGBColor(0, 0, 0)
-			print(f"Created slide {slide_count}: Responsory - {speaker}")
+				content_top = Inches(1)
+			# Content box
+			content_box = slide.shapes.add_textbox(Inches(0.5), content_top, Inches(12.33), Inches(5.5))
+			content_frame = content_box.text_frame
+			content_frame.word_wrap = True
+			content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+			# Clear default empty paragraph formatting
+			first_para = content_frame.paragraphs[0]
+			first_para.text = ''
+			for line_idx, line in enumerate(text_lines):
+				para = first_para if line_idx == 0 else content_frame.add_paragraph()
+				para.alignment = PP_ALIGN.CENTER
+				run = para.add_run()
+				run.text = line
+				run.font.name = 'Georgia'
+				run.font.size = Pt(36)
+				run.font.bold = True
+				run.font.color.rgb = RGBColor(0, 0, 0)
+			print(f"Created slide {slide_count}: Responsory (formatted, idx={idx+1})")
 		return slide_count
 
 	def _create_gospel_canticle_section(self, prs, liturgical_data, slide_count):
@@ -1140,28 +1148,39 @@ class bbgrlslidegeneratorv1:
 			if not intercessions_data:
 				print("  No intercessions data available")
 				return slide_count
-			slide_count += 1
-			slide = prs.slides.add_slide(prs.slide_layouts[6])
-			title_box = slide.shapes.add_textbox(Inches(0.5), Inches(3), Inches(12.33), Inches(1.5))
-			title_frame = title_box.text_frame
-			title_frame.word_wrap = True
-			title_para = title_frame.paragraphs[0]
-			title_para.alignment = PP_ALIGN.CENTER
-			title_run = title_para.add_run()
-			title_run.text = "INTERCESSIONS"
-			title_run.font.name = "Georgia"
-			title_run.font.size = Pt(48)
-			title_run.font.bold = True
-			title_run.font.color.rgb = RGBColor(0, 51, 102)
-			print(f"Created slide {slide_count}: INTERCESSIONS (title)")
-			for group in intercessions_data:
+			
+			# Process each intercession group
+			for idx, group in enumerate(intercessions_data):
 				category = group.get('category')
 				introduction = group.get('introduction', '')
 				response_line = group.get('response_line', '')
 				intentions = group.get('intentions', [])
+				
+				# Create introduction slide with INTERCESSIONS title (only for first group)
 				slide_count += 1
 				slide = prs.slides.add_slide(prs.slide_layouts[6])
-				content_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(12.33), Inches(5.5))
+				
+				if idx == 0:
+					# Add INTERCESSIONS title at top
+					title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(12.33), Inches(1))
+					title_frame = title_box.text_frame
+					title_frame.word_wrap = True
+					title_para = title_frame.paragraphs[0]
+					title_para.alignment = PP_ALIGN.CENTER
+					title_run = title_para.add_run()
+					title_run.text = "INTERCESSIONS"
+					title_run.font.name = "Georgia"
+					title_run.font.size = Pt(48)
+					title_run.font.bold = True
+					title_run.font.color.rgb = RGBColor(0, 51, 102)
+					content_top = Inches(2)
+					print(f"Created slide {slide_count}: INTERCESSIONS (title)")
+				else:
+					content_top = Inches(1)
+					print(f"Created slide {slide_count}: Intercessions Introduction{' - ' + category if category else ''}")
+				
+				# Add introduction and response on same slide
+				content_box = slide.shapes.add_textbox(Inches(0.5), content_top, Inches(12.33), Inches(5.5))
 				content_frame = content_box.text_frame
 				content_frame.word_wrap = True
 				content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
@@ -1174,23 +1193,30 @@ class bbgrlslidegeneratorv1:
 					intro_run.font.size = Pt(30)
 					intro_run.font.bold = True
 					intro_run.font.color.rgb = RGBColor(0, 0, 0)
-				if introduction and response_line:
-					spacing_run = content_para.add_run()
-					spacing_run.text = "\n\n"
-					spacing_run.font.size = Pt(20)
+				
+				# Create separate slide for response line
 				if response_line:
-					all_label_run = content_para.add_run()
+					slide_count += 1
+					slide = prs.slides.add_slide(prs.slide_layouts[6])
+					response_box = slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(12.33), Inches(3))
+					response_frame = response_box.text_frame
+					response_frame.word_wrap = True
+					response_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+					response_para = response_frame.paragraphs[0]
+					response_para.alignment = PP_ALIGN.CENTER
+					all_label_run = response_para.add_run()
 					all_label_run.text = "(All) "
 					all_label_run.font.name = "Georgia"
-					all_label_run.font.size = Pt(30)
+					all_label_run.font.size = Pt(44)
 					all_label_run.font.bold = True
-					all_label_run.font.color.rgb = RGBColor(100, 0, 100)
-					response_run = content_para.add_run()
+					all_label_run.font.color.rgb = RGBColor(0x00, 0x00, 0xFF)
+					response_run = response_para.add_run()
 					response_run.text = response_line
 					response_run.font.name = "Georgia"
-					response_run.font.size = Pt(30)
+					response_run.font.size = Pt(44)
 					response_run.font.bold = True
-					response_run.font.color.rgb = RGBColor(100, 0, 100)
+					response_run.font.color.rgb = RGBColor(0, 0, 0)
+					print(f"Created slide {slide_count}: Intercessions Response")
 				print(
 					f"Created slide {slide_count}: Intercessions Introduction{' - ' + category if category else ''}"
 				)

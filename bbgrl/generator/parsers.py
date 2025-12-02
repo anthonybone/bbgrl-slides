@@ -46,18 +46,30 @@ def extract_antiphon_and_psalm_info(text: Any, number: int, text_after_psalmody:
                     break
 
             try:
-                ant_rubrica = soup.find('span', class_='rubrica', string=re.compile(rf'Ant\.\s*{number}'))
+                ant_rubrica = soup.find('span', class_='rubrica', string=re.compile(rf'Ant\.\s*{number}', re.IGNORECASE))
                 if ant_rubrica:
+                    # Prefer the immediate Psalm rubrica following the Antiphon marker
                     next_rubrica = ant_rubrica.find_next('span', class_='rubrica')
                     if next_rubrica:
                         rubrica_text = next_rubrica.get_text(separator='\n').strip()
-                        lines = rubrica_text.split('\n')
+                        lines = [ln.strip() for ln in rubrica_text.split('\n') if ln.strip()]
+                        # Expect patterns like "Psalm 42" followed by subtitle
                         if lines:
-                            psalm_title = lines[0].strip()
+                            psalm_title = lines[0]
                             print(f"  Found red psalm title: {psalm_title}")
                         if len(lines) > 1:
-                            psalm_subtitle = lines[1].strip()
+                            psalm_subtitle = lines[1]
                             print(f"  Found red psalm subtitle: {psalm_subtitle}")
+                # Fallback: search anywhere for a Psalm heading if the above failed
+                if not psalm_title:
+                    any_psalm_rubrica = soup.find('span', class_='rubrica', string=re.compile(r'^Psalm\s+\d+[A-Z]?(?::\d+(?:-\d+)?)?$', re.IGNORECASE))
+                    if any_psalm_rubrica:
+                        rubrica_text = any_psalm_rubrica.get_text(separator='\n').strip()
+                        psalm_title = rubrica_text
+                        subtitle_span = any_psalm_rubrica.find_next('span', class_='rubrica')
+                        if subtitle_span:
+                            psalm_subtitle = subtitle_span.get_text().strip()
+                        print(f"  Fallback found psalm heading: {psalm_title} - {psalm_subtitle}")
             except Exception as e:
                 print(f"  WARNING: Could not extract red psalm text from HTML: {e}")
 
@@ -88,6 +100,14 @@ def extract_antiphon_and_psalm_info(text: Any, number: int, text_after_psalmody:
                             subtitle = subtitle[:100].rsplit(' ', 1)[0] + '...'
                         psalm_subtitle = subtitle
                     print(f"  Found psalm: {psalm_title} - {psalm_subtitle}")
+                else:
+                    # Final fallback for known case: ensure Psalm 42 heading appears
+                    if text_after_psalmody:
+                        m = re.search(r'(Psalm\s+42[A-Z]?(?::\d+(?:-\d+)?)?)\s*\n\s*([^\n]{10,100})', text_after_psalmody, re.IGNORECASE)
+                        if m:
+                            psalm_title = m.group(1).strip()
+                            psalm_subtitle = m.group(2).strip()
+                            print(f"  Heuristic psalm capture: {psalm_title} - {psalm_subtitle}")
         else:
             antiphon_patterns = [
                 rf'Ant\.\s*{number}[:\s]+([^.]+\.)',
@@ -331,7 +351,6 @@ def extract_canticle_verses(soup, text: Optional[str] = None) -> Dict[str, Any]:
         remaining_html = str(canticle_soup)
         verse_sections = re.split(r'<br\s*/?>\s*<br\s*/?>', remaining_html)
         verse_count = 0
-        skipped_first_section = False
         for section in verse_sections:
             section_soup = _bs4(section)
             for rubrica in section_soup.find_all('span', class_='rubrica'):
@@ -339,11 +358,6 @@ def extract_canticle_verses(soup, text: Optional[str] = None) -> Dict[str, Any]:
             verse_text = section_soup.get_text().strip()
             if not verse_text or len(verse_text) < 20:
                 continue
-            if not skipped_first_section and verse_count == 0:
-                if len(verse_text) < 150 and verse_text.endswith('.'):
-                    print(f"  Skipping antiphon text in canticle extraction: {verse_text[:50]}...")
-                    skipped_first_section = True
-                    continue
             verse_text = re.sub(r'\s+', ' ', verse_text).strip()
             if not verse_text[-1] in '.!?"':
                 verse_text += '.'
@@ -438,7 +452,14 @@ def extract_responsory_from_html(soup, text: str) -> List[Dict[str, Any]]:
             print("  WARNING: No RESPONSORY marker found in text")
             return []
         responsory_start = responsory_match.end()
-        stop_patterns = [r'\bOr:', r'GOSPEL\s+CANTICLE', r'CANTICLE\s+OF\s+ZECHARIAH']
+        # Stop at Gospel Canticle or intercessions markers
+        stop_patterns = [
+            r'GOSPEL\s+CANTICLE',
+            r'Ant\.\s+[A-Z]',  # Antiphon for Gospel Canticle
+            r'CANTICLE\s+OF\s+ZECHARIAH',
+            r'\bOr:',
+            r'INTERCESSIONS'
+        ]
         responsory_end = len(text)
         for pattern in stop_patterns:
             stop_match = re.search(pattern, text[responsory_start:], re.IGNORECASE)
@@ -446,54 +467,93 @@ def extract_responsory_from_html(soup, text: str) -> List[Dict[str, Any]]:
                 responsory_end = responsory_start + stop_match.start()
                 break
         responsory_section = text[responsory_start:responsory_end].strip()
+        
         normalized_section = responsory_section.replace('\u2014', '—').replace('\u2013', '—').replace('\u2015', '—')
         em_dash_parts = [part.strip() for part in normalized_section.split('—') if part.strip()]
-        all_segments: List[str] = []
-        if len(em_dash_parts) > 0:
-            all_segments.append(em_dash_parts[0])
-        if len(em_dash_parts) > 1:
-            part1_sentences: List[str] = []
-            current = ""
-            for i, char in enumerate(em_dash_parts[1]):
-                current += char
-                if char == '.' and i + 1 < len(em_dash_parts[1]):
-                    next_char = em_dash_parts[1][i + 1]
-                    if next_char.isupper() or (i + 2 < len(em_dash_parts[1]) and em_dash_parts[1][i + 2].isupper()):
-                        part1_sentences.append(current.strip())
-                        current = ""
-            if current.strip():
-                part1_sentences.append(current.strip())
-            all_segments.extend(part1_sentences)
-        if len(em_dash_parts) > 2:
-            glory_pattern = r'(.*?)(Glory\s+to\s+the\s+Father.*)'
-            glory_match = re.search(glory_pattern, em_dash_parts[2], re.IGNORECASE | re.DOTALL)
-            if glory_match:
-                shortened = glory_match.group(1).strip()
-                glory = glory_match.group(2).strip()
-                if shortened:
-                    all_segments.append(shortened)
-                if glory:
-                    all_segments.append(glory)
+        
+        # Handle different responsory structures
+        # Structure A (6 parts): opening — repeat — verse — response — glory — final
+        # Structure B (4 parts): opening — combined(repeat+verse) — combined(response+glory) — final
+        
+        if len(em_dash_parts) == 4:
+            # Structure B: Need to split the combined parts
+            # Part 0: opening (line 1)
+            # Part 1: repeat of opening (line 2) + new verse (line 3)
+            # Part 2: response + Glory
+            # Part 3: final repeat
+            
+            # For Part 1: The repeat should be the same as Part 0
+            # Everything after that is the new verse
+            opening_text = em_dash_parts[0].strip()
+            part1_text = em_dash_parts[1].strip()
+            
+            # Find where the opening text ends in part1
+            # The repeat will be identical or very similar to opening
+            if part1_text.startswith(opening_text):
+                # Part 1 starts with exact repeat
+                repeat_text = opening_text
+                verse_text = part1_text[len(opening_text):].strip()
             else:
-                all_segments.append(em_dash_parts[2])
-        for i in range(3, len(em_dash_parts)):
-            all_segments.append(em_dash_parts[i])
-        if len(all_segments) < 6:
-            print(f"  WARNING: Expected 6 segments but found {len(all_segments)}, structure may be incorrect")
+                # Split by looking for period+newline that marks end of repeat
+                lines = part1_text.split('\n')
+                # The opening is 2 lines, so repeat should also be 2 lines
+                opening_lines = opening_text.split('\n')
+                if len(lines) > len(opening_lines):
+                    repeat_text = '\n'.join(lines[:len(opening_lines)])
+                    verse_text = '\n'.join(lines[len(opening_lines):]).strip()
+                else:
+                    # Fallback: assume first sentence is repeat
+                    sentences = part1_text.split('. ')
+                    if len(sentences) >= 2:
+                        repeat_text = sentences[0] + '.'
+                        verse_text = '. '.join(sentences[1:])
+                    else:
+                        repeat_text = part1_text
+                        verse_text = ""
+            
+            # Split part 2: separate response from Glory
+            glory_match = re.search(r'(.*?)(Glory\s+to\s+the\s+Father.*)', em_dash_parts[2], re.IGNORECASE | re.DOTALL)
+            if glory_match:
+                response_line = glory_match.group(1).strip()
+                glory_line = glory_match.group(2).strip()
+            else:
+                response_line = em_dash_parts[2].strip()
+                glory_line = ""
+            
+            # Build the 3 slides
+            responsory_verses: List[Dict[str, Any]] = []
+            
+            # Slide 1: Opening + repeat
+            combined_first = opening_text + "\n— " + repeat_text
+            responsory_verses.append({"speaker": "All", "text": combined_first, "include_title": True})
+            
+            # Slide 2: Verse + response
+            combined_verse = verse_text + "\n— " + response_line
+            responsory_verses.append({"speaker": "Priest", "text": combined_verse})
+            
+            # Slide 3: Glory + final
+            combined_glory = glory_line + "\n— " + em_dash_parts[3].strip()
+            responsory_verses.append({"speaker": "Priest", "text": combined_glory})
+            
+        elif len(em_dash_parts) >= 6:
+            # Structure A: 6 separate parts
+            responsory_verses: List[Dict[str, Any]] = []
+            
+            # Slide 1: Opening + repeat
+            combined_first = em_dash_parts[0].strip() + "\n— " + em_dash_parts[1].strip()
+            responsory_verses.append({"speaker": "All", "text": combined_first, "include_title": True})
+            
+            # Slide 2: Second verse + short response
+            combined_verse = em_dash_parts[2].strip() + "\n— " + em_dash_parts[3].strip()
+            responsory_verses.append({"speaker": "Priest", "text": combined_verse})
+            
+            # Slide 3: Glory + final repeat
+            combined_glory = em_dash_parts[4].strip() + "\n— " + em_dash_parts[5].strip()
+            responsory_verses.append({"speaker": "Priest", "text": combined_glory})
+        else:
+            print(f"  WARNING: Unexpected number of em-dash parts ({len(em_dash_parts)}), cannot parse responsory")
             return []
-        responsory_verses: List[Dict[str, Any]] = []
-        combined_first = all_segments[0].strip()
-        if len(all_segments) > 1:
-            combined_first += "\n— " + all_segments[1].strip()
-        responsory_verses.append({"speaker": "All", "text": combined_first, "include_title": True})
-        combined_verse = all_segments[2].strip()
-        if len(all_segments) > 3:
-            combined_verse += "\n— " + all_segments[3].strip()
-        responsory_verses.append({"speaker": "Priest", "text": combined_verse})
-        combined_glory = all_segments[4].strip()
-        if len(all_segments) > 5:
-            combined_glory += "\n— " + all_segments[5].strip()
-        responsory_verses.append({"speaker": "Priest", "text": combined_glory})
+        
         print(f"  Found RESPONSORY with {len(responsory_verses)} parts")
         return responsory_verses
     except Exception as e:
@@ -949,30 +1009,50 @@ def extract_intercessions_html(soup, text: str) -> List[Dict[str, Any]]:
         for group in intercessions_groups:
             group_text = group['text']
             category = group['category']
-            intro_match = re.search(r'(.*?)(?=Nourish your people|You redeemed us)', group_text, re.DOTALL | re.IGNORECASE)
+            
+            # Extract introduction: text before the first <em> tag (which typically contains the response)
+            # or before the first petition pattern
+            intro_pattern = r'(.*?)(?=<em>|<br\s*/?>(?:\s*<br\s*/?>)?(?:\s*[A-Z][^<]+?—))'
+            intro_match = re.search(intro_pattern, group_text, re.DOTALL | re.IGNORECASE)
+            
             if intro_match:
                 introduction = intro_match.group(1).strip()
                 introduction = re.sub(r'INTERCESSIONS', '', introduction, flags=re.IGNORECASE).strip()
                 introduction = re.sub(r'<[^>]+>', '', introduction).strip()
+                # Clean up extra whitespace
+                introduction = re.sub(r'\s+', ' ', introduction).strip()
                 intentions_text = group_text[intro_match.end():]
             else:
                 introduction = ""
                 intentions_text = group_text
-            response_match = re.search(r'(Nourish your people, Lord\.|You redeemed us by your blood\.)', group_text, re.IGNORECASE)
-            response_line = response_match.group(1) if response_match else ""
-            cleaned_text = re.sub(r'<em>\s*(Nourish your people, Lord\.|You redeemed us by your blood\.)\s*</em>', '', intentions_text, flags=re.IGNORECASE)
-            cleaned_text = re.sub(r'(Nourish your people, Lord\.|You redeemed us by your blood\.)', '', cleaned_text, flags=re.IGNORECASE)
+            
+            # Extract the response line dynamically from <em> tags
+            response_line = ""
+            em_match = re.search(r'<em>\s*([^<]+?)\s*</em>', group_text, re.IGNORECASE)
+            if em_match:
+                response_line = em_match.group(1).strip()
+            
+            # Remove the response line from intentions text (both in <em> tags and plain text)
+            cleaned_text = intentions_text
+            if response_line:
+                # Escape special regex characters in the response line
+                escaped_response = re.escape(response_line)
+                cleaned_text = re.sub(rf'<em>\s*{escaped_response}\s*</em>', '', cleaned_text, flags=re.IGNORECASE)
+                cleaned_text = re.sub(rf'\b{escaped_response}\b', '', cleaned_text, flags=re.IGNORECASE)
             cleaned_text = re.sub(r'<span class="rubrica">—</span>', '—', cleaned_text, flags=re.IGNORECASE)
             cleaned_text = re.sub(r'<br\s*/?>', ' ', cleaned_text, flags=re.IGNORECASE)
             cleaned_text = re.sub(r'<[^>]+>', ' ', cleaned_text, flags=re.IGNORECASE)
-            intention_pattern = r'([^—<]+?)—\s*([^<]+?)\.'
+            intention_pattern = r'([^—<]+?)—\s*([^<.]+)'
             intentions: List[Dict[str, str]] = []
             for m in re.finditer(intention_pattern, cleaned_text):
                 petition = m.group(1).strip()
                 response = m.group(2).strip()
                 if len(petition) < 20:
                     continue
-                if re.search(r'Nourish your people|You redeemed us|INTERCESSIONS', petition, re.IGNORECASE):
+                if re.search(r'INTERCESSIONS', petition, re.IGNORECASE):
+                    continue
+                # Skip if response matches the main response line (it was already shown separately)
+                if response_line and response.lower() in response_line.lower():
                     continue
                 petition = re.sub(r'<[^>]+>', '', petition).strip()
                 petition = re.sub(r'^\s*[,\s]+', '', petition).strip()
