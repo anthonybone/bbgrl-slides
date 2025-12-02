@@ -36,15 +36,7 @@ echo Building executable with PyInstaller...
 pyinstaller --noconfirm --onefile ^
   --name "%NAME%" ^
   --add-data "ui_app\templates;templates" ^
-  --hidden-import bbgrl ^
-  --hidden-import bbgrl.generator ^
-  --hidden-import bbgrl.generator.generator ^
-  --hidden-import bbgrl.generator.parsers ^
-  --hidden-import bbgrl.generator.scraper ^
-  --hidden-import bbgrl.generator.slides ^
-  --hidden-import bbgrl.generator.static_content ^
-  --hidden-import bbgrl.generator.fallbacks ^
-  --hidden-import bbgrl.generator.constants ^
+  --add-data "bbgrl;bbgrl" ^
   --collect-all flask ^
   --collect-all jinja2 ^
   --collect-all werkzeug ^
@@ -53,6 +45,8 @@ pyinstaller --noconfirm --onefile ^
   --collect-all selenium ^
   --collect-all bs4 ^
   --collect-all lxml ^
+  --collect-all pptx ^
+  --collect-all requests ^
   "%ENTRY%"
 if errorlevel 1 (
   echo Build failed.
