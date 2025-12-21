@@ -1073,7 +1073,8 @@ class bbgrlslidegeneratorv1:
 			ant_text.font.size = Pt(44)
 			ant_text.font.name = 'Georgia'
 			ant_text.font.bold = True
-			ant_text.font.color.rgb = RGBColor(100, 0, 100)
+			# Render antiphon text in standard black to maintain consistency
+			ant_text.font.color.rgb = RGBColor(0, 0, 0)
 			print(f"Created slide {slide_count}: GOSPEL CANTICLE (with header and antiphon)")
 			slide_count += 1
 			slide = prs.slides.add_slide(prs.slide_layouts[6])
