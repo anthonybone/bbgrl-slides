@@ -962,11 +962,28 @@ class bbgrlslidegeneratorv1:
 		for idx, verse in enumerate(responsory_verses):
 			slide_count += 1
 			slide = prs.slides.add_slide(prs.slide_layouts[6])
+			# Normalize verse text into lines
 			raw_lines = [ln.strip() for ln in verse.get('text', '').split('\n') if ln.strip()]
-			text_lines = raw_lines[:]
-			
+			# Determine "before" (pre–em-dash) and "after" (post–em-dash) segments
+			dash_idx = None
+			for i, ln in enumerate(raw_lines):
+				if ln.startswith('—') or ln.startswith('\u2014'):
+					dash_idx = i
+					break
+			if dash_idx is not None:
+				before_seg = "\n".join(raw_lines[:dash_idx]).strip()
+				after_parts = [raw_lines[dash_idx].lstrip('—').lstrip('\u2014').strip()] + raw_lines[dash_idx + 1 :]
+				after_seg = "\n".join(after_parts).strip()
+			else:
+				# Fallback: split on the first em-dash in concatenated text
+				joined = " ".join(raw_lines)
+				parts = [p.strip() for p in joined.split('—')]
+				if len(parts) >= 2:
+					before_seg, after_seg = parts[0], "—".join(parts[1:]).strip()
+				else:
+					before_seg, after_seg = joined, ""
+			# Title at top if requested
 			if verse.get('include_title'):
-				# Title at top
 				title_box = slide.shapes.add_textbox(Inches(1), Inches(0.5), Inches(11.33), Inches(1))
 				title_frame = title_box.text_frame
 				title_frame.text = "RESPONSORY"
@@ -979,24 +996,37 @@ class bbgrlslidegeneratorv1:
 				content_top = Inches(1.75)
 			else:
 				content_top = Inches(1)
-			# Content box
+			# Content box (single paragraph: red pre-dash, black post-dash)
 			content_box = slide.shapes.add_textbox(Inches(0.5), content_top, Inches(12.33), Inches(5.5))
 			content_frame = content_box.text_frame
 			content_frame.word_wrap = True
 			content_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
-			# Clear default empty paragraph formatting
-			first_para = content_frame.paragraphs[0]
-			first_para.text = ''
-			for line_idx, line in enumerate(text_lines):
-				para = first_para if line_idx == 0 else content_frame.add_paragraph()
-				para.alignment = PP_ALIGN.CENTER
-				run = para.add_run()
-				run.text = line
-				run.font.name = 'Georgia'
-				run.font.size = Pt(36)
-				run.font.bold = True
-				run.font.color.rgb = RGBColor(0, 0, 0)
-			print(f"Created slide {slide_count}: Responsory (formatted, idx={idx+1})")
+			para = content_frame.paragraphs[0]
+			para.alignment = PP_ALIGN.CENTER
+			# Red (pre–em-dash) segment
+			if before_seg:
+				run_before = para.add_run()
+				run_before.text = before_seg
+				run_before.font.name = 'Georgia'
+				run_before.font.size = Pt(36)
+				run_before.font.bold = True
+				run_before.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
+			# Separator em-dash
+			if after_seg:
+				sep_run = para.add_run()
+				sep_run.text = "\n— " if "\n" in before_seg else " — "
+				sep_run.font.name = 'Georgia'
+				sep_run.font.size = Pt(36)
+				sep_run.font.bold = True
+				sep_run.font.color.rgb = RGBColor(0, 0, 0)
+				# Black (post–em-dash) segment
+				run_after = para.add_run()
+				run_after.text = after_seg
+				run_after.font.name = 'Georgia'
+				run_after.font.size = Pt(36)
+				run_after.font.bold = True
+				run_after.font.color.rgb = RGBColor(0, 0, 0)
+			print(f"Created slide {slide_count}: Responsory (formatted with red/black, idx={idx+1})")
 		return slide_count
 
 	def _create_gospel_canticle_section(self, prs, liturgical_data, slide_count):
