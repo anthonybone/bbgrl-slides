@@ -1132,7 +1132,12 @@ class bbgrlslidegeneratorv1:
 				verse_frame.word_wrap = True
 				verse_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
 				verse_p = verse_frame.paragraphs[0]
-				verse_p.text = verse_text
+				# Clean liturgical markers: remove crosses '+' and '†', and asterisks '*'
+				cleaned_text = re.sub(r"\s*\+\s*", " ", verse_text)
+				cleaned_text = cleaned_text.replace("†", "")
+				cleaned_text = cleaned_text.replace("*", "")
+				cleaned_text = re.sub(r" {2,}", " ", cleaned_text)
+				verse_p.text = cleaned_text
 				verse_p.alignment = PP_ALIGN.LEFT
 				verse_p.font.size = Pt(44)
 				verse_p.font.name = 'Georgia'
