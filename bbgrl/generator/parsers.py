@@ -358,6 +358,12 @@ def extract_canticle_verses(soup, text: Optional[str] = None) -> Dict[str, Any]:
             verse_text = section_soup.get_text().strip()
             if not verse_text or len(verse_text) < 20:
                 continue
+            # Skip standalone parenthetical scripture citations like "(Revelation 1:17-18)"
+            # These are metadata and should not be treated as verse content
+            if re.match(r"^\(\s*[1-3]?\s*[A-Za-z][A-Za-z\s]+\s+\d+:\d+(?:[-–—]\d+)?\s*\)\.?$", verse_text):
+                # print for debugging context when running generator
+                print(f"  Skipping parenthetical citation in canticle: {verse_text}")
+                continue
             verse_text = re.sub(r'\s+', ' ', verse_text).strip()
             if not verse_text[-1] in '.!?"':
                 verse_text += '.'
