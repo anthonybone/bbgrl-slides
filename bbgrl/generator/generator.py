@@ -1260,18 +1260,27 @@ class bbgrlslidegeneratorv1:
 					intention_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
 					intention_para = intention_frame.paragraphs[0]
 					intention_para.alignment = PP_ALIGN.CENTER
+					# Pre–em-dash petition in red
 					petition_run = intention_para.add_run()
 					petition_run.text = intention['petition']
 					petition_run.font.name = "Georgia"
 					petition_run.font.size = Pt(30)
 					petition_run.font.bold = True
-					petition_run.font.color.rgb = RGBColor(0, 0, 0)
+					petition_run.font.color.rgb = RGBColor(0x98, 0x00, 0x00)
+					# Em-dash separator in black
 					dash_run = intention_para.add_run()
-					dash_run.text = "\n— " + intention['response']
+					dash_run.text = "\n— "
 					dash_run.font.name = "Georgia"
 					dash_run.font.size = Pt(30)
 					dash_run.font.bold = True
 					dash_run.font.color.rgb = RGBColor(0, 0, 0)
+					# Post–em-dash response in black
+					response_run = intention_para.add_run()
+					response_run.text = intention['response']
+					response_run.font.name = "Georgia"
+					response_run.font.size = Pt(30)
+					response_run.font.bold = True
+					response_run.font.color.rgb = RGBColor(0, 0, 0)
 					print(f"Created slide {slide_count}: Intercession Intention")
 			return slide_count
 		except Exception as e:
