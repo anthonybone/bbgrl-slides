@@ -493,11 +493,281 @@ class bbgrlslidegeneratorv1:
 			os.makedirs(_dir)
 
 		output_path = os.path.join(_dir, output_filename)
-		prs.save(output_path)
+		# Post-process: maximize text sizes while respecting shape bounds
+		self._maximize_text_size(prs)
+		try:
+			prs.save(output_path)
+		except PermissionError:
+			# On Windows the PPTX may be open in PowerPoint, which locks the file.
+			base, ext = os.path.splitext(output_filename)
+			ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+			alt_name = f"{base}_{ts}{ext}"
+			alt_path = os.path.join(_dir, alt_name)
+			print(f"  WARNING: Could not overwrite '{output_path}'. Saving to '{alt_path}' instead.")
+			prs.save(alt_path)
+			output_path = alt_path
 		slide_progress("Presentation saved")
 		return output_path
 
 	# --- Dynamic section builders (moved from legacy file) ---
+
+	def _maximize_text_size(self, prs):
+		"""Resize every text box to the largest font that fits its bounds.
+
+		python-pptx does not perform PowerPoint's layout engine; relying on auto-fit
+		often yields inconsistent results. This pass computes wrapping + font size
+		using real font metrics (Pillow) and rewrites each text frame.
+
+		No slide-index or section hard-coding. Font size is derived from shape
+		geometry and text content via search.
+		"""
+		try:
+			from PIL import ImageFont
+		except Exception:
+			print("  WARNING: Pillow not available; skipping text fit pass")
+			return
+
+		EMU_PER_INCH = 914400
+		# Use a deterministic conversion for font measurement.
+		# This is not a fixed point size; it only maps inches->pixels for measurement.
+		DPI = 96
+
+		def _font_path_for(name: str, bold: bool, italic: bool) -> str | None:
+			windir = os.environ.get("WINDIR", r"C:\\Windows")
+			fonts_dir = os.path.join(windir, "Fonts")
+			if name.lower() != "georgia":
+				return None
+			candidates = []
+			if bold and italic:
+				candidates = ["georgiaz.ttf"]
+			elif bold:
+				candidates = ["georgiab.ttf"]
+			elif italic:
+				candidates = ["georgiai.ttf"]
+			else:
+				candidates = ["georgia.ttf"]
+			for fname in candidates:
+				path = os.path.join(fonts_dir, fname)
+				if os.path.exists(path):
+					return path
+			return None
+
+		def _measure_text_px(font: ImageFont.FreeTypeFont, text: str) -> float:
+			# Pillow: getlength is preferred; fallback to bbox width.
+			try:
+				return float(font.getlength(text))
+			except Exception:
+				bbox = font.getbbox(text)
+				return float(bbox[2] - bbox[0])
+
+		def _split_tokens_preserve_ws(s: str):
+			# Keep whitespace as tokens so we can wrap cleanly.
+			return re.split(r"(\s+)", s)
+
+		def _wrap_tokens(tokens, font, max_width_px: float):
+			# tokens: list of (text, style_key)
+			wrapped = []
+			line_width = 0.0
+			for text, style in tokens:
+				if text == "":
+					continue
+				# Handle explicit newlines inside token
+				parts = text.split("\n")
+				for pi, part in enumerate(parts):
+					if pi > 0:
+						wrapped.append(("\n", style))
+						line_width = 0.0
+					if part == "":
+						continue
+					w = _measure_text_px(font, part)
+					# If the token is whitespace and line is empty, skip it
+					if part.isspace() and line_width == 0.0:
+						continue
+					# Wrap on token boundaries; if a single token is too wide, hard-break by chars
+					if line_width > 0.0 and (line_width + w) > max_width_px:
+						# Prefer breaking at whitespace boundaries
+						if not part.isspace():
+							wrapped.append(("\n", style))
+							line_width = 0.0
+							# Hard-break long words
+							if _measure_text_px(font, part) > max_width_px:
+								buf = ""
+								for ch in part:
+									if buf and (_measure_text_px(font, buf + ch) > max_width_px):
+										wrapped.append((buf + "\n", style))
+										buf = ch
+									else:
+										buf += ch
+								if buf:
+									wrapped.append((buf, style))
+									line_width = _measure_text_px(font, buf)
+								continue
+						else:
+							wrapped.append(("\n", style))
+							line_width = 0.0
+					# Append token
+					wrapped.append((part, style))
+					line_width += w
+			return wrapped
+
+		def _count_lines_from_wrapped(wrapped_tokens) -> int:
+			lines = 1
+			for t, _ in wrapped_tokens:
+				lines += t.count("\n")
+			return max(1, lines)
+
+		def _fit_shape(tf, shape) -> None:
+			# Capture original paragraphs/runs with styles.
+			paragraph_specs = []
+			for p in tf.paragraphs:
+				runs = getattr(p, "runs", []) or []
+				para_runs = []
+				for r in runs:
+					para_runs.append({
+						"text": r.text or "",
+						"name": (r.font.name or p.font.name or "Georgia"),
+						"bold": bool(r.font.bold if r.font.bold is not None else p.font.bold),
+						"italic": bool(r.font.italic if r.font.italic is not None else p.font.italic),
+						"color": getattr(getattr(r.font, "color", None), "rgb", None),
+					})
+				paragraph_specs.append({
+					"alignment": p.alignment,
+					"runs": para_runs,
+				})
+			# If there's no content, skip.
+			if not any(any(r["text"] for r in ps["runs"]) for ps in paragraph_specs):
+				return
+
+			# Available box size in pixels, using EMU -> inches -> px
+			w_in = float(shape.width) / EMU_PER_INCH if shape.width else 1.0
+			h_in = float(shape.height) / EMU_PER_INCH if shape.height else 1.0
+			w_px = max(1.0, w_in * DPI)
+			h_px = max(1.0, h_in * DPI)
+
+			# Margins: proportional to shape size (no fixed absolute sizing)
+			mx = w_px * 0.02
+			my = h_px * 0.02
+			inner_w = max(1.0, w_px - (2.0 * mx))
+			inner_h = max(1.0, h_px - (2.0 * my))
+
+			# Flatten tokens per paragraph (keeps run-level style)
+			def build_tokens_for_para(para_spec):
+				tokens = []
+				for run in para_spec["runs"]:
+					style_key = (run["name"], run["bold"], run["italic"], run["color"])
+					for tok in _split_tokens_preserve_ws(run["text"]):
+						if tok == "":
+							continue
+						tokens.append((tok, style_key))
+				return tokens
+
+			# Binary search font size (pt) per shape.
+			# Upper bound is derived from box height; lower bound is minimal readable size.
+			low = 1.0
+			high = max(1.0, (inner_h / DPI) * 72.0)  # points
+			best = low
+
+			def fits(size_pt: float) -> tuple[bool, list[list[tuple[str, tuple]]]]:
+				# Wrap each paragraph independently; total height is sum of paragraph line heights
+				wrapped_paras = []
+				total_h = 0.0
+				for para in paragraph_specs:
+					para_tokens = build_tokens_for_para(para)
+					# Choose a representative font for measurement based on first non-empty token
+					font_name = "Georgia"
+					bold = False
+					italic = False
+					for _, sk in para_tokens:
+						font_name, bold, italic, _ = sk
+						break
+					fpath = _font_path_for(font_name, bold, italic)
+					try:
+						font = ImageFont.truetype(fpath, int(max(1, round(size_pt * DPI / 72.0)))) if fpath else ImageFont.load_default()
+					except Exception:
+						font = ImageFont.load_default()
+					wrapped = _wrap_tokens(para_tokens, font, inner_w)
+					wrapped_paras.append(wrapped)
+					lines = _count_lines_from_wrapped(wrapped)
+					try:
+						ascent, descent = font.getmetrics()
+						line_h = (ascent + descent) * 1.15
+					except Exception:
+						line_h = (size_pt * DPI / 72.0) * 1.2
+					total_h += (lines * line_h)
+				# Fit must respect total height
+				return (total_h <= inner_h), wrapped_paras
+
+			# Search with limited iterations
+			best_wrapped = None
+			for _ in range(18):
+				mid = (low + high) / 2.0
+				ok, wrapped_paras = fits(mid)
+				if ok:
+					best = mid
+					best_wrapped = wrapped_paras
+					low = mid
+				else:
+					high = mid
+
+			if best_wrapped is None:
+				# Ensure we have wrapping for the smallest size
+				_, best_wrapped = fits(best)
+
+			# Rewrite text frame using wrapped tokens + computed size
+			tf.clear()
+			# Apply proportional margins in pptx units
+			try:
+				tf.margin_left = Inches((mx / DPI))
+				tf.margin_right = Inches((mx / DPI))
+				tf.margin_top = Inches((my / DPI))
+				tf.margin_bottom = Inches((my / DPI))
+			except Exception:
+				pass
+			tf.word_wrap = True
+			tf.auto_size = MSO_AUTO_SIZE.NONE
+
+			for pi, (para_spec, wrapped_tokens) in enumerate(zip(paragraph_specs, best_wrapped)):
+				p = tf.paragraphs[0] if pi == 0 else tf.add_paragraph()
+				p.alignment = para_spec["alignment"]
+				p.space_before = Pt(0)
+				p.space_after = Pt(0)
+				# Rebuild runs, merging adjacent tokens with identical style
+				merged = []
+				for t, sk in wrapped_tokens:
+					if not merged or merged[-1][1] != sk:
+						merged.append([t, sk])
+					else:
+						merged[-1][0] += t
+				for text, sk in merged:
+					if text == "":
+						continue
+					font_name, bold, italic, color = sk
+					r = p.add_run()
+					r.text = text
+					r.font.name = font_name
+					r.font.bold = bold
+					r.font.italic = italic
+					try:
+						r.font.size = Pt(best)
+					except Exception:
+						pass
+					if color is not None:
+						try:
+							r.font.color.rgb = color
+						except Exception:
+							pass
+
+		try:
+			for slide in prs.slides:
+				for shape in slide.shapes:
+					if not getattr(shape, "has_text_frame", False) or not shape.has_text_frame:
+						continue
+					try:
+						_fit_shape(shape.text_frame, shape)
+					except Exception as e:
+						print(f"  WARNING: Text fit failed on a shape: {e}")
+		except Exception as e:
+			print(f"  WARNING: Maximize text size post-pass encountered an error: {e}")
 
 	def _create_opening_slides(self, prs, liturgical_data, slide_count):
 		"""Create opening slides following reference template

@@ -5,3 +5,4 @@ lxml
 selenium
 pytest
 Flask
+Pillow
