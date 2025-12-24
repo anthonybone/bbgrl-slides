@@ -463,8 +463,6 @@ class bbgrlslidegeneratorv1:
 		slide_progress("Added Oh Sacred Heart image slide")
 		slide_count = _slides_osh_prayers(prs, slide_count)
 		slide_progress("Added Oh Sacred Heart prayer text slides")
-		slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
-		slide_progress("Created mass readings section")
 		slide_count = _slides_nsh_image(prs, slide_count)
 		slide_progress("Added Novena to the Sacred Heart image slide")
 		slide_count = _slides_soc_prayers(prs, slide_count)
@@ -485,6 +483,9 @@ class bbgrlslidegeneratorv1:
 		slide_progress("Added St. Joseph Prayer image slide")
 		slide_count = _slides_stj_text(prs, slide_count)
 		slide_progress("Added St. Joseph Prayer text slides")
+		# Move Mass Readings (Responsorial Psalm + Gospel) to very end of deck
+		slide_count = self._create_mass_readings_section(prs, liturgical_data, slide_count)
+		slide_progress("Created mass readings section")
 
 		# Save presentation
 		_dir = output_dir or "output_v2"
